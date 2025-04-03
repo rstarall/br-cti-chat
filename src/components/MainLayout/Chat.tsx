@@ -11,34 +11,57 @@ import { useChatStore, Message } from '../../stores/chatStore';
 
 const Chat: React.FC = () => {
   const [value, setValue] = useState(''); // 受控输入值
-  const conversationsRef = useRef<HTMLDivElement>(null);
+  const conversationsRef = useRef<any>(null);
   const senderRef = useRef<any>(null);
-  const { currentConversationId, setCurrentConversationId,appendMessage, streamRequest, createConversation, conversationHistory } = useChatStore();
+  const containerRef = useRef<any>(null);
+  const { currentConversationId, setCurrentConversationId, appendMessage, streamRequest, createConversation, conversationHistory } = useChatStore();
   const [messages, setMessages] = useState<Message[]>([]);
+  const prevMessagesRef = useRef<Message[]>([]);
   
   // 初始化消息
   useEffect(() => {
-    if(Object.keys(conversationHistory).length === 0){
-      const newConversationId = createConversation('新对话');
-      setCurrentConversationId(newConversationId);
-      appendMessage(newConversationId,{
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
-      });
-    }else{
-      const lastConversationId = Object.keys(conversationHistory).pop();
-      if(lastConversationId){
-        setCurrentConversationId(lastConversationId);
+    // 添加延迟确保数据加载
+    const initializeMessages = setTimeout(() => {
+      console.log('conversationHistory', conversationHistory);
+      if(Object.keys(conversationHistory).length === 0){
+        const newConversationId = createConversation('');
+        setCurrentConversationId(newConversationId);
+        appendMessage(newConversationId, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
+        });
+      } else {
+        const lastConversationId = Object.keys(conversationHistory)[Object.keys(conversationHistory).length-1];
+        if(lastConversationId){
+          setCurrentConversationId(lastConversationId);
+        }
       }
-    }
-  }, []);
+    }, 100); // 添加100ms延迟
 
-  // 监听currentConversationId的变化并更新messages
+    // 清理函数
+    return () => clearTimeout(initializeMessages);
+  }, [conversationHistory]);
+
+  // 监听currentConversationId和conversationHistory的变化并更新messages
   useEffect(() => {
     if (currentConversationId) {
       const currentMessages = conversationHistory[currentConversationId]?.messages || [];
-      setMessages(currentMessages);
+      
+      // 只有当消息内容真正发生变化时才更新状态
+      const messagesChanged = 
+        prevMessagesRef.current.length !== currentMessages.length || 
+        currentMessages.some((msg, idx) => 
+          !prevMessagesRef.current[idx] || 
+          msg.content !== prevMessagesRef.current[idx].content ||
+          msg.streaming !== prevMessagesRef.current[idx].streaming ||
+          msg.loading !== prevMessagesRef.current[idx].loading
+        );
+        
+      if (messagesChanged) {
+        setMessages(currentMessages);
+        prevMessagesRef.current = currentMessages;
+      }
     }
   }, [conversationHistory, currentConversationId]);
 
@@ -50,36 +73,39 @@ const Chat: React.FC = () => {
     }
   }, [messages]);
 
-
-
   const handleSubmit = async (content: string) => {
-    console.log('提交消息:', content); // 调试日志
+    console.log('提交消息:', content);
     if (!content.trim()) return;
+    
     //如果当前没有会话，则创建一个
-    if(currentConversationId == ''){
-      const newConversationId = createConversation(content.slice(0,10));
-      setCurrentConversationId(newConversationId);
+    if(currentConversationId == ''||currentConversationId == null||currentConversationId == undefined){
+      createConversation('');
     }
 
-    // 添加用户消息
-    const userMessage: Message = { id: Date.now().toString(), role: 'user', content };
-    setMessages(prev => [...prev, userMessage]);
-    messages.map(msg => {
-      appendMessage(currentConversationId,msg);
-    });
     setValue(''); // 清空输入框
-    
-
 
     // 使用真实接口请求
     try {
       await streamRequest(currentConversationId, content);
+      
+      // 确保滚动到底部
+      if (conversationsRef.current) {
+        // 使用 smooth 实现平滑滚动
+        conversationsRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end' // 或 'center'、'end'
+        });
+        containerRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end' // 或 'center'、'end'
+        });
+
+      }
     } catch (error) {
       console.error('请求失败:', error);
     }
   };
 
-  
 
   // 在渲染前添加调试日志
   console.log('当前消息列表:', messages);
@@ -87,7 +113,7 @@ const Chat: React.FC = () => {
 
   return (
     <XProvider>
-      <div className='h-[calc(100vh-50px)] bg-white relative overflow-scroll' style={{ 
+      <div ref={containerRef} className='h-[calc(100vh-50px)] bg-white relative overflow-scroll' style={{ 
         backgroundImage: "url('./Q&A.png')",
         backgroundSize: '85%',
         backgroundPosition: 'center',
@@ -96,7 +122,7 @@ const Chat: React.FC = () => {
         {/* 对话区域 */}
         <div 
           ref={conversationsRef}
-          className='bg-white overflow-y-scroll'
+          className='bg-white'
           style={{ 
             flex: 1, 
             overflow: 'auto', 
@@ -105,13 +131,13 @@ const Chat: React.FC = () => {
             display: 'flex', // 确保内容可以填充
             flexDirection: 'column', // 垂直排列
             backgroundColor: 'rgba(255, 255, 255, 0.1)', // 添加半透明背景
-            opacity:1
+            opacity: 1
           }}
         >
           <Bubble.List
-            className='bg-white overflow-y-scroll'
-            items={messages.map((msg, index) => ({
-              key: index,
+            className='bg-white pb-[100px]'
+            items={messages.map((msg) => ({
+              key: msg.id, // 只使用id作为key，确保稳定
               content: msg.content,
               placement: msg.role === 'user' ? 'end' :'start',
               variant: msg.role === 'user' ? 'filled' : 'outlined',
@@ -120,7 +146,6 @@ const Chat: React.FC = () => {
               shape: 'round',
               avatar: msg.role === 'assistant' ? <Avatar>AI</Avatar> : undefined
             }))}
-            autoScroll={true}
           />
           
           {/* 显示消息数量 */}
@@ -130,12 +155,22 @@ const Chat: React.FC = () => {
         </div>
         
         {/* 输入区域 */}
-        <div className='fixed bottom-[0]  right-0 w-[calc(100%-400px)] bg-white' style={{ padding: '20px', borderTop: '1px solid #eee' }}>
+        <div className='fixed bottom-[0] right-0 w-[calc(100%-400px)] bg-white' style={{ padding: '20px', borderTop: '1px solid #eee' }}>
           <Sender
             ref={senderRef}
             value={value}
             onChange={(val) => setValue(val)}
-            onSubmit={handleSubmit}
+            onSubmit={(content) => {
+              handleSubmit(content);
+              // 确保在提交后立即滚动到底部
+              if (conversationsRef.current) {
+                setTimeout(() => {
+                  if (conversationsRef.current) {
+                    conversationsRef.current.scrollTop = conversationsRef.current.scrollHeight;
+                  }
+                }, 0);
+              }
+            }}
             placeholder="请输入消息..."
             submitType="enter"
           />
