@@ -19,4 +19,4 @@ ThreatRAG is the backend:
 
 ## UI
 
-![frontend](docs\imgs\frontend.png)
+![frontend](./docs/imgs/frontend.png)
