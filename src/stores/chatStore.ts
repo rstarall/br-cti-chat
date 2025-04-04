@@ -2,12 +2,19 @@
 import { create } from 'zustand';
 import { persist, type StorageValue } from 'zustand/middleware';
 
+export type RetrievalContext = {
+  id: string;
+  data: string;
+  source: string;
+}
+
 export type Message = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   streaming?: boolean;
   loading?: boolean;
+  retrievalContexts?: RetrievalContext[];
 };
 export type Conversation = {
   id: string;
@@ -243,7 +250,24 @@ const useStore = create<ChatState>()(
               }catch(e){
                 console.error('解析会话Title失败:', data, e);
               }
-              
+              try{
+                //处理retrievalContexts
+                if(data.startsWith('[rag_context]:')){
+                  const returnedRetrievalContexts = data.substring('[rag_context]:'.length).trim();
+                  console.log('服务器返回RAG相关信息:', returnedRetrievalContexts);
+                  const retrievalContexts = JSON.parse(returnedRetrievalContexts);
+                  if(retrievalContexts.length > 0){
+                    updateMessage(conversationId, botMsg.id, msg => ({ 
+                      ...msg, 
+                      retrievalContexts: retrievalContexts
+                    }));
+                  }
+                  continue;
+                }
+              }catch(e){
+                console.error('解析RAG相关信息失败:', data, e);
+              }
+            
               try {
                 // 尝试解析JSON
                 const jsonObjList = parseJsonData(data)

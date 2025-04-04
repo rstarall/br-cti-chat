@@ -22,8 +22,8 @@ const dataSource: DataType[] = [];
 
 export default function DataSideContainer() {
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b">
+    <div className="h-full flex flex-col p-2">
+      <div className="flex justify-start items-center border-b p-2">
         <Upload>
           <Button type="primary" block icon={<UploadOutlined />}>
             上传文件

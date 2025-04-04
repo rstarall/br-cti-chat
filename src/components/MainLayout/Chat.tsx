@@ -1,125 +1,165 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import type { BubbleProps } from '@ant-design/x';
 import { 
   XProvider, 
   Bubble, 
   Sender
 } from '@ant-design/x';
-import { Avatar } from 'antd';
-import { useChatStore, Message } from '../../stores/chatStore';
+import { Avatar, Typography } from 'antd';
+import { useChatStore, Message, RetrievalContext } from '../../stores/chatStore';
+import MarkdownRenderer from './Markdown';
+import { UpOutlined, DownOutlined } from '@ant-design/icons';
+
+const MemoizedMarkdownRenderer = memo(({ content }: { content: string }) => (
+  <Typography>
+    <MarkdownRenderer content={content} />
+  </Typography>
+));
+
+const MemoizedRetrievalContextRenderer = memo(({ retrievalContexts }: { retrievalContexts: RetrievalContext[] }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  return (
+    <div className='p-2 bg-white rounded-md shadow-md mb-2'>
+      <div 
+        className='flex justify-between items-center cursor-pointer' 
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Typography.Text strong style={{ fontSize: '14px' }}>相关信息({retrievalContexts.length})</Typography.Text>
+        <div className='h-[20px] text-gray-500 flex items-center justify-center px-2'>
+          {isExpanded ? <UpOutlined /> : <DownOutlined />}
+        </div>
+      </div>
+      {isExpanded && (
+        <div className='mt-2'>
+          <Typography.Paragraph>
+            {retrievalContexts.map((context, index) => (
+              <Typography.Text key={index}>
+                {context.source}
+                {index < retrievalContexts.length - 1 && <br />}
+              </Typography.Text>
+            ))}
+          </Typography.Paragraph>
+        </div>
+      )}
+    </div>
+  );
+});
+
 
 const Chat: React.FC = () => {
-  const [value, setValue] = useState(''); // 受控输入值
+  const [value, setValue] = useState('');
   const conversationsRef = useRef<any>(null);
   const senderRef = useRef<any>(null);
   const containerRef = useRef<any>(null);
+  const bottomRef = useRef<any>(null);
   const { currentConversationId, setCurrentConversationId, appendMessage, streamRequest, createConversation, conversationHistory } = useChatStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const prevMessagesRef = useRef<Message[]>([]);
   
-  // 初始化消息
+  // 初始化消息 - 优化初始化逻辑
   useEffect(() => {
-    // 添加延迟确保数据加载
-    const initializeMessages = setTimeout(() => {
-      console.log('conversationHistory', conversationHistory);
-      if(Object.keys(conversationHistory).length === 0){
-        const newConversationId = createConversation('');
-        setCurrentConversationId(newConversationId);
-        appendMessage(newConversationId, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
-        });
-      } else {
-        const lastConversationId = Object.keys(conversationHistory)[Object.keys(conversationHistory).length-1];
-        if(lastConversationId){
-          setCurrentConversationId(lastConversationId);
-        }
+    if (!currentConversationId && Object.keys(conversationHistory).length === 0) {
+      const newConversationId = createConversation('');
+      setCurrentConversationId(newConversationId);
+      appendMessage(newConversationId, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
+      });
+    } else if (!currentConversationId) {
+      const lastConversationId = Object.keys(conversationHistory)[Object.keys(conversationHistory).length-1];
+      if (lastConversationId) {
+        setCurrentConversationId(lastConversationId);
       }
-    }, 100); // 添加100ms延迟
+    }
+    autoScrollToBottom();
+  }, []); // 只在组件挂载时执行一次
 
-    // 清理函数
-    return () => clearTimeout(initializeMessages);
-  }, [conversationHistory]);
-
-  // 监听currentConversationId和conversationHistory的变化并更新messages
+  // 优化消息更新逻辑
   useEffect(() => {
-    if (currentConversationId) {
-      const currentMessages = conversationHistory[currentConversationId]?.messages || [];
+    if (!currentConversationId) return;
+    
+    const currentMessages = conversationHistory[currentConversationId]?.messages || [];
+    const prevMessages = prevMessagesRef.current;
+    
+    if (!Array.isArray(currentMessages)) return;
+    
+    const hasChanged = currentMessages.length !== prevMessages.length ||
+      JSON.stringify(currentMessages) !== JSON.stringify(prevMessages);
+    
+    if (hasChanged) {
+      prevMessagesRef.current = currentMessages;
+      setMessages(currentMessages);
       
-      // 只有当消息内容真正发生变化时才更新状态
-      const messagesChanged = 
-        prevMessagesRef.current.length !== currentMessages.length || 
-        currentMessages.some((msg, idx) => 
-          !prevMessagesRef.current[idx] || 
-          msg.content !== prevMessagesRef.current[idx].content ||
-          msg.streaming !== prevMessagesRef.current[idx].streaming ||
-          msg.loading !== prevMessagesRef.current[idx].loading
-        );
-        
-      if (messagesChanged) {
-        setMessages(currentMessages);
-        prevMessagesRef.current = currentMessages;
+      // 合并滚动逻辑到消息更新中
+      autoScrollToBottom();
+    }
+  }, [currentConversationId, conversationHistory]);
+
+  const autoScrollToBottom = useCallback(() => {
+    //延迟100ms后执行
+    setTimeout(() => {
+      if (containerRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
       }
-    }
-  }, [conversationHistory, currentConversationId]);
+    }, 100);
+  }, []);
 
-  // 自动滚动到底部
-  useEffect(() => {
-    if (conversationsRef.current) {
-      const element = conversationsRef.current;
-      element.scrollTop = element.scrollHeight;
-    }
-  }, [messages]);
-
+  // 优化提交处理函数
   const handleSubmit = async (content: string) => {
-    console.log('提交消息:', content);
     if (!content.trim()) return;
     
-    //如果当前没有会话，则创建一个
-    if(currentConversationId == ''||currentConversationId == null||currentConversationId == undefined){
-      createConversation('');
+    if (!currentConversationId) {
+      const newConversationId = createConversation('');
+      setCurrentConversationId(newConversationId);
     }
-
-    setValue(''); // 清空输入框
-
-    // 使用真实接口请求
+    setValue('');
     try {
       await streamRequest(currentConversationId, content);
-      
-      // 确保滚动到底部
-      if (conversationsRef.current) {
-        // 使用 smooth 实现平滑滚动
-        conversationsRef.current.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'end' // 或 'center'、'end'
-        });
-        containerRef.current.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'end' // 或 'center'、'end'
-        });
-
-      }
     } catch (error) {
       console.error('请求失败:', error);
     }
   };
 
+  // 使用 useMemo 缓存消息渲染函数
+  const messageRenderer = useMemo(() => {
+    return (content: string) => <MemoizedMarkdownRenderer content={content} />;
+  }, []);
 
-  // 在渲染前添加调试日志
-  console.log('当前消息列表:', messages);
-  console.log('当前会话ID:', currentConversationId);
+  const retrievalContextRenderer = useMemo(() => {
+    //useMemo避免信息重复计算
+    return (retrievalContexts: RetrievalContext[]) => <MemoizedRetrievalContextRenderer retrievalContexts={retrievalContexts} />;
+  }, []);
+
+  // 优化 commonBubble，添加 Markdown 到依赖数组
+  const commonBubble = useCallback((msg: Message) => {
+    return {
+      key: msg.id,
+      content: msg.content,
+      messageRender: messageRenderer, //渲染函数
+      placement: msg.role === 'user' ? 'end' as const : 'start' as const,
+      variant: msg.role === 'user' ? 'filled' as const : 'outlined' as const,
+      loading: msg.loading,
+      typing: msg.role === 'assistant' && msg.streaming && !msg.loading,
+      shape: 'round' as const,
+      avatar: msg.role === 'assistant' ? <Avatar>AI</Avatar> : undefined,
+      className: 'p-0',
+      contentClassName: 'flex justify-center items-center mb-[-12px]', // 使用contentClassName来控制内容区域的样式
+      header: msg.retrievalContexts ? retrievalContextRenderer(msg.retrievalContexts) : undefined
+    } as BubbleProps;
+  }, [messageRenderer, retrievalContextRenderer]); // 添加retrievalContextRenderer到依赖数组
 
   return (
     <XProvider>
-      <div ref={containerRef} className='h-[calc(100vh-50px)] bg-white relative overflow-scroll' style={{ 
+      <div ref={containerRef} className='h-[calc(100vh-50px)] bg-white relative overflow-auto' style={{ 
         backgroundImage: "url('./Q&A.png')",
         backgroundSize: '85%',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
       }}>
-        {/* 对话区域 */}
         <div 
           ref={conversationsRef}
           className='bg-white'
@@ -127,50 +167,29 @@ const Chat: React.FC = () => {
             flex: 1, 
             overflow: 'auto', 
             padding: '20px',
-            minHeight: '300px', // 添加最小高度
-            display: 'flex', // 确保内容可以填充
-            flexDirection: 'column', // 垂直排列
-            backgroundColor: 'rgba(255, 255, 255, 0.1)', // 添加半透明背景
+            minHeight: '300px',
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
             opacity: 1
           }}
         >
           <Bubble.List
-            className='bg-white pb-[100px]'
-            items={messages.map((msg) => ({
-              key: msg.id, // 只使用id作为key，确保稳定
-              content: msg.content,
-              placement: msg.role === 'user' ? 'end' :'start',
-              variant: msg.role === 'user' ? 'filled' : 'outlined',
-              loading: msg.loading,
-              typing: msg.role === 'assistant' && msg.streaming && !msg.loading,
-              shape: 'round',
-              avatar: msg.role === 'assistant' ? <Avatar>AI</Avatar> : undefined
-            }))}
+            className='bg-white pb-[100px] overflow-hidden'
+            items={messages.map((msg) => commonBubble(msg))}
           />
           
-          {/* 显示消息数量 */}
           <div style={{ position: 'absolute', top: 0, right: 0, background: '#f0f0f0', padding: '2px 5px', fontSize: '12px' }}>
             消息数: {messages.length}
           </div>
         </div>
         
-        {/* 输入区域 */}
         <div className='fixed bottom-[0] right-0 w-[calc(100%-400px)] bg-white' style={{ padding: '20px', borderTop: '1px solid #eee' }}>
           <Sender
             ref={senderRef}
             value={value}
-            onChange={(val) => setValue(val)}
-            onSubmit={(content) => {
-              handleSubmit(content);
-              // 确保在提交后立即滚动到底部
-              if (conversationsRef.current) {
-                setTimeout(() => {
-                  if (conversationsRef.current) {
-                    conversationsRef.current.scrollTop = conversationsRef.current.scrollHeight;
-                  }
-                }, 0);
-              }
-            }}
+            onChange={setValue}
+            onSubmit={handleSubmit}
             placeholder="请输入消息..."
             submitType="enter"
           />
@@ -180,4 +199,4 @@ const Chat: React.FC = () => {
   );
 };
 
-export default Chat; 
+export default Chat;

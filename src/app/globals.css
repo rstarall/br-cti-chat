@@ -30,3 +30,9 @@ html, body {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+
+/* 确保article元素文本上下居中 */
+article {
+  margin-bottom: -12px;
+}

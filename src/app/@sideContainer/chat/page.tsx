@@ -114,8 +114,8 @@ export default function ChatSideContainer() {
   useEffect(() => {
     const calculateHeight = () => {
       const windowHeight = window.innerHeight;
-      const offset = 120; // 根据其他UI元素高度调整
-      setListHeight(windowHeight - offset);
+      const offset = 200; // 根据其他UI元素高度调整
+      setListHeight(windowHeight+offset);
     };
 
     calculateHeight();
@@ -124,17 +124,18 @@ export default function ChatSideContainer() {
   }, []);
 
   return (
-    <div className="overflow-scroll h-full">
+    <div className="h-full relative">
       {contextHolder}
-      <div className="m-4 mb-0 border-b">
+      <div className="m-4 mb-0 border-b h-[50px]">
         <Input
           placeholder="搜索聊天记录"
           prefix={<SearchOutlined />}
           allowClear
         />
       </div>
-      <div className="flex-1 p-2" style={{ height: 'calc(100% - 120px)' }}>
+      <div  className="p-2 z-0 h-[calc(100%-100px)] w-full">
         <List
+          className=' z-0'
           height={listHeight}
           itemCount={items.length}
           itemSize={50}
@@ -145,7 +146,7 @@ export default function ChatSideContainer() {
           {MemoizedRow}
         </List>
       </div>
-      <div className="p-4 border-t">
+      <div className="absolute bottom-0 left-0 border-t p-4 bg-white  w-[calc(100%-10px)] h-[90px] z-10">
         <Button onClick={() => createConversation('')} type="primary" block icon={<PlusOutlined />}>
           新建会话
         </Button>
