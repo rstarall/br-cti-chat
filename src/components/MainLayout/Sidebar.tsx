@@ -35,16 +35,19 @@ const items: MenuProps['items'] = [
 export default function Sidebar() {
   const router = useRouter();
   const [current, setCurrent] = useState('/chat');
+  const [isHovered, setIsHovered] = useState(false);
 
   const onClick: MenuProps['onClick'] = (e) => {
     setCurrent(e.key);
     router.push(e.key);
   };
 
+
   return (
-    <div className="h-full pt-[10px] w-[150px]">
+    <div className="h-full pt-[10px]" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
       <Menu
-        mode="inline"
+        mode='inline'
+        inlineCollapsed={!isHovered}
         selectedKeys={[current]}
         items={items}
         onClick={onClick}

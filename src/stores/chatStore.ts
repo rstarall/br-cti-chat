@@ -20,6 +20,9 @@ export type Conversation = {
   id: string;
   title: string;
   time: string;
+};
+// 分离会话记录和消息
+export type ConversationMessages = {
   messages: Message[];
 };
 
@@ -27,6 +30,7 @@ export type ChatState = {
   apiUrl: string;
   currentConversationId: string;
   conversationHistory: Record<string, Conversation>;
+  conversationMessageHistory: Record<string, ConversationMessages>;
   setApiUrl: (url: string) => void;
   setCurrentConversationId: (id: string) => void;
   createConversation: (title: string) => string;
@@ -43,19 +47,30 @@ const useStore = create<ChatState>()(
     (set, get) => ({
       apiUrl: 'http://localhost:8000/chat/stream',
       conversationHistory: {},
+      conversationMessageHistory: {},
       currentConversationId: '',
       setApiUrl: (url) => set({ apiUrl: url }),
       setCurrentConversationId: (id: string) => set({ currentConversationId: id }),
       createConversation: (title) =>{
         const conversationId = Date.now().toString();
+        const wellcomeMsg = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
+        } as Message;
         set({
           conversationHistory: {
             ...get().conversationHistory,
             [conversationId]: {
               id: conversationId,
-              title,
-              time: new Date().toLocaleTimeString(),
-              messages: []
+              title: title,
+              time: new Date().getTime().toString(),
+            }
+          },
+          conversationMessageHistory: {
+            ...get().conversationMessageHistory,
+            [conversationId]: {
+              messages: [wellcomeMsg]
             }
           }
         });
@@ -77,23 +92,26 @@ const useStore = create<ChatState>()(
         set({
           conversationHistory: Object.fromEntries(
             Object.entries(get().conversationHistory).filter(([id]) => id !== conversationId)
+          ),
+          conversationMessageHistory: Object.fromEntries(
+            Object.entries(get().conversationMessageHistory).filter(([id]) => id !== conversationId)
           )
         });
         return true;
       },
       appendMessage: (conversationId, msg) => 
-        set({ conversationHistory: {
-          ...get().conversationHistory,
-          [conversationId]: {
-            id: conversationId,
-            title: get().conversationHistory[conversationId]?.title || '',
-            time: new Date().toLocaleTimeString(),
-            messages: [...get().conversationHistory[conversationId]?.messages || [], msg]
+        set({ 
+          conversationMessageHistory: {
+            ...get().conversationMessageHistory,
+            [conversationId]: {
+              messages: [...get().conversationMessageHistory[conversationId].messages, msg]
+            }
           }
-        } }),
+        }),
       resetConversationId: (oldId: string,newId: string) => {
         const conversationHistory = get().conversationHistory;
-        const oldConversation = conversationHistory[oldId];  
+        const oldConversation = conversationHistory[oldId];
+        const oldConversationMessages = get().conversationMessageHistory[oldId];
         if (oldConversation) {
           delete conversationHistory[oldId];
           set({
@@ -103,6 +121,12 @@ const useStore = create<ChatState>()(
                 ...oldConversation,
                 id: newId
               }
+            },
+            conversationMessageHistory: {
+              ...get().conversationMessageHistory,
+              [newId]: {
+                ...oldConversationMessages
+              }
             }
           });
           set({currentConversationId: newId});
@@ -110,11 +134,11 @@ const useStore = create<ChatState>()(
       },
       updateMessage: (conversationId, id, update) =>
         set({
-          conversationHistory: {
-            ...get().conversationHistory,
+          conversationMessageHistory: {
+            ...get().conversationMessageHistory,
             [conversationId]: {
-              ...get().conversationHistory[conversationId],
-              messages: get().conversationHistory[conversationId].messages.map(msg => 
+              ...get().conversationMessageHistory[conversationId],
+              messages: get().conversationMessageHistory[conversationId].messages.map(msg => 
                 msg.id === id 
                   ? (typeof update === 'function' ? update(msg) : { ...msg, content: update })
                   : msg

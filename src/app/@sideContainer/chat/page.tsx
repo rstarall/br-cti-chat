@@ -1,6 +1,6 @@
 'use client';
 
-import { Input, Button, theme, message, Modal } from 'antd';
+import { Input, Button, theme, message, Modal, Skeleton } from 'antd';
 import { SearchOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useChatStore } from '@/stores/chatStore';
 import { useEffect, useState, useCallback, memo, useMemo } from 'react';
@@ -8,15 +8,17 @@ import { FixedSizeList as List } from 'react-window';
 
 export default function ChatSideContainer() {
   const [messageApi, contextHolder] = message.useMessage();
-  const { token } = theme.useToken();
   const { conversationHistory, currentConversationId, setCurrentConversationId, deleteConversation, createConversation, resetConversationTitle } = useChatStore();
   const [items, setItems] = useState<Array<{ id: string; title: string; created_time: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [isInit, setIsInit] = useState(false);
   const [deletedConversationId, setDeletedConversationId] = useState<string | null>(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [editingConversationId, setEditingConversationId] = useState('');
   const [deletingConversationId, setDeletingConversationId] = useState('');
   const [newTitle, setNewTitle] = useState('');
+
 
   // 1. 使用 useMemo 优化 items 列表
   const memoizedItems = useMemo(() => {
@@ -25,12 +27,26 @@ export default function ChatSideContainer() {
       title: conversation.title,
       created_time: conversation.time
     }));
-  }, [conversationHistory,currentConversationId]);
+  }, [conversationHistory, currentConversationId]);
+
+  const getSortedItems = useCallback(() => {
+    // 修改排序逻辑，使最新的对话排在最前面（降序排列）
+    const sortedItems = memoizedItems.sort((a, b) => (new Date(b.created_time).getTime() - new Date(a.created_time).getTime()));
+    if(!isInit){
+      if(sortedItems.length>0){
+        setCurrentConversationId(sortedItems[0].id);
+        setIsInit(true);
+      }
+      
+    }
+    return sortedItems;
+  }, [memoizedItems]);
 
   // 2. 使用 useEffect 更新 items 状态
   useEffect(() => {
-    setItems(memoizedItems);
-  }, [memoizedItems]);
+    setItems(getSortedItems());
+    setLoading(false);
+  }, [getSortedItems]);
 
   // 处理删除成功提示
   useEffect(() => {
@@ -83,9 +99,9 @@ export default function ChatSideContainer() {
         className={`rounded-md p-2 cursor-pointer ${item.id === currentConversationId ? 'bg-blue-100' : ''}`}
         onClick={() => setCurrentConversationId(item.id)}
       >
-        <div className="flex justify-between items-center">
-          <span>{(item.title===''||item.title==null)?'新对话':item.title}</span>
-          <div>
+        <div className="flex justify-between items-center ">
+          <span className='overflow-hidden text-ellipsis whitespace-nowrap'>{(item.title===''||item.title==null)?'新对话':item.title}</span>
+          <div className='flex items-center gap-2'>
             <Button 
               type="text" 
               icon={<EditOutlined />} 
@@ -126,7 +142,7 @@ export default function ChatSideContainer() {
   return (
     <div className="h-full relative">
       {contextHolder}
-      <div className="m-4 mb-0 border-b h-[50px]">
+      <div className="p-4 pb-3 border-b h-[60px]">
         <Input
           placeholder="搜索聊天记录"
           prefix={<SearchOutlined />}
@@ -134,8 +150,9 @@ export default function ChatSideContainer() {
         />
       </div>
       <div  className="p-2 z-0 h-[calc(100%-100px)] w-full">
+      <Skeleton loading={loading} active>
         <List
-          className=' z-0'
+          className='z-0'
           height={listHeight}
           itemCount={items.length}
           itemSize={50}
@@ -145,6 +162,7 @@ export default function ChatSideContainer() {
         >
           {MemoizedRow}
         </List>
+        </Skeleton>
       </div>
       <div className="absolute bottom-0 left-0 border-t p-4 bg-white  w-[calc(100%-10px)] h-[90px] z-10">
         <Button onClick={() => createConversation('')} type="primary" block icon={<PlusOutlined />}>

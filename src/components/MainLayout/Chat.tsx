@@ -49,40 +49,41 @@ const MemoizedRetrievalContextRenderer = memo(({ retrievalContexts }: { retrieva
 });
 
 
-const Chat: React.FC = () => {
+const Chat: React.FC<{siderWidth:number}> = ({siderWidth=300}) => {
   const [value, setValue] = useState('');
   const conversationsRef = useRef<any>(null);
   const senderRef = useRef<any>(null);
   const containerRef = useRef<any>(null);
   const bottomRef = useRef<any>(null);
-  const { currentConversationId, setCurrentConversationId, appendMessage, streamRequest, createConversation, conversationHistory } = useChatStore();
+  const { currentConversationId, setCurrentConversationId, streamRequest, createConversation, conversationHistory, conversationMessageHistory } = useChatStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const prevMessagesRef = useRef<Message[]>([]);
   
   // 初始化消息 - 优化初始化逻辑
   useEffect(() => {
-    if (!currentConversationId && Object.keys(conversationHistory).length === 0) {
-      const newConversationId = createConversation('');
-      setCurrentConversationId(newConversationId);
-      appendMessage(newConversationId, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
-      });
-    } else if (!currentConversationId) {
-      const lastConversationId = Object.keys(conversationHistory)[Object.keys(conversationHistory).length-1];
-      if (lastConversationId) {
-        setCurrentConversationId(lastConversationId);
+    // 延迟执行以确保不会与SideContainer的初始化冲突
+    setTimeout(() => {
+      // 获取最新的状态
+      const currentState = useChatStore.getState();
+      const currentHistory = currentState.conversationHistory;
+      
+      if (Object.keys(currentHistory).length === 0) {
+        createConversation('');
+      } else {
+        const lastConversationId = Object.keys(currentHistory)[Object.keys(currentHistory).length-1];
+        if (lastConversationId) {
+          setCurrentConversationId(lastConversationId);
+        }
       }
-    }
-    autoScrollToBottom();
-  }, []); // 只在组件挂载时执行一次
+      autoScrollToBottom();
+    }, 0); // 使用setTimeout确保在所有组件渲染完成后执行
+  }, []);
 
   // 优化消息更新逻辑
   useEffect(() => {
     if (!currentConversationId) return;
     
-    const currentMessages = conversationHistory[currentConversationId]?.messages || [];
+    const currentMessages = conversationMessageHistory[currentConversationId]?.messages || [];
     const prevMessages = prevMessagesRef.current;
     
     if (!Array.isArray(currentMessages)) return;
@@ -97,7 +98,7 @@ const Chat: React.FC = () => {
       // 合并滚动逻辑到消息更新中
       autoScrollToBottom();
     }
-  }, [currentConversationId, conversationHistory]);
+  }, [currentConversationId, conversationMessageHistory]);
 
   const autoScrollToBottom = useCallback(() => {
     //延迟100ms后执行
@@ -152,6 +153,8 @@ const Chat: React.FC = () => {
     } as BubbleProps;
   }, [messageRenderer, retrievalContextRenderer]); // 添加retrievalContextRenderer到依赖数组
 
+
+
   return (
     <XProvider>
       <div ref={containerRef} className='h-[calc(100vh-50px)] bg-white relative overflow-auto' style={{ 
@@ -183,8 +186,10 @@ const Chat: React.FC = () => {
             消息数: {messages.length}
           </div>
         </div>
-        
-        <div className='fixed bottom-[0] right-0 w-[calc(100%-400px)] bg-white' style={{ padding: '20px', borderTop: '1px solid #eee' }}>
+        <div 
+         className="fixed bottom-[0] right-0  bg-white"
+         style={{ padding: '20px', borderTop: '1px solid #eee', height: '100px', width: `calc(100% - ${siderWidth}px)` }}
+         >
           <Sender
             ref={senderRef}
             value={value}
