@@ -20,23 +20,18 @@ const columns: ColumnsType<DataType> = [
 
 const dataSource: DataType[] = [];
 
-export default function KPSideContainer() {
+export default function KGSideContainer() {
+
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b">
-        <Upload>
+    <div className="h-full flex flex-col p-2">
+      <div className="flex justify-start items-center border-b p-4">
+        <Upload action={'/upload'} method="POST" showUploadList={false}>
           <Button type="primary" block icon={<UploadOutlined />}>
             上传文件
           </Button>
         </Upload>
       </div>
-      <Table<DataType>
-        columns={columns}
-        dataSource={dataSource}
-        className="flex-1"
-        pagination={false}
-        rowKey="key"
-      />
     </div>
   );
 }

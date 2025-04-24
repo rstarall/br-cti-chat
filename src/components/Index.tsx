@@ -4,6 +4,7 @@ import { Layout } from 'antd';
 import Sidebar from './Sidebar';
 import ChatHeader from './Header';
 import React, { useState, useCallback, useEffect, createContext, useContext } from 'react';
+import MainPage from '@/app/page';
 const { Content, Sider, Header } = Layout;
 
 const defaultSiderWidth = 340;
@@ -15,7 +16,7 @@ interface SiderWidthContextType {
 
 export const FixedSiderWidthContext = createContext<SiderWidthContextType>({
   width: defaultSiderWidth,
-  setWidth: () => {}
+  setWidth: () => {},
 });
 
 export const useFixedSiderWidth = () => useContext(FixedSiderWidthContext);
@@ -27,13 +28,18 @@ export default function MainLayout({
   children: React.ReactNode;
   sideContainer: React.ReactNode;
 }) {
+  
+
   const [fixedSiderWidth, setFixedSiderWidth] = useState(defaultSiderWidth);
   const [siderWidth, setSiderWidth] = useState(50);
   const [siderPageWidth, setSiderPageWidth] = useState(defaultSiderWidth-50);
-  
+  const [onlyMainPage,setOnlyMainPage] = useState(true)
+  const [currentPagePath,setCurrentPagePath] = useState('/chat')
   useEffect(() => {
     setSiderWidth(50);
     setSiderPageWidth(fixedSiderWidth-50);
+    console.log('fixedSiderWidth changed:', fixedSiderWidth);
+    // 监听窗口大小变化
   }, [fixedSiderWidth]);
 
   const handleMouseEnter = useCallback(() => {
@@ -79,12 +85,10 @@ export default function MainLayout({
             width: fixedSiderWidth,
             setWidth: setFixedSiderWidth
           }}>
-            {children}
+            {onlyMainPage?<MainPage/>:children}
           </FixedSiderWidthContext.Provider>
         </Content>
-        </Layout>
-
-        
+        </Layout>       
       </Layout>
     </Layout>
   );

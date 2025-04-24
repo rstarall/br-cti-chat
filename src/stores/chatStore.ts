@@ -393,6 +393,7 @@ const useStore = create<ChatState>()(
             loading: false 
           }));
           console.error('流式传输错误:', error);
+          throw new Error(`HTTP error! status: ${error}`);
         }
       },
     }),

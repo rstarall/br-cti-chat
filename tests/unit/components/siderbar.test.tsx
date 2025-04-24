@@ -26,14 +26,18 @@ describe('ChatSideContainer组件', () => {
   };
 
   // 在每个测试前设置模拟数据
+  const resetConversationTitle = jest.fn();
+  const setCurrentConversationId= jest.fn();
+  const deleteConversation = jest.fn();
+  const createConversation = jest.fn();
   beforeEach(() => {
     ((useChatStore as unknown) as jest.Mock).mockImplementation(() => ({
       conversationHistory: mockConversations,
       currentConversationId: 'conv-1',
-      setCurrentConversationId: jest.fn(),
-      deleteConversation: jest.fn(),
-      createConversation: jest.fn(),
-      resetConversationTitle: jest.fn()
+      setCurrentConversationId: setCurrentConversationId,
+      deleteConversation: deleteConversation,
+      createConversation: createConversation,
+      resetConversationTitle: resetConversationTitle
     }));
   });
 
@@ -56,12 +60,15 @@ describe('ChatSideContainer组件', () => {
   });
 
   test('点击新建会话按钮', () => {
-    const createConversation = jest.fn();
     ((useChatStore as unknown) as jest.Mock).mockImplementation(() => ({
-      ...useChatStore(),
-      createConversation
+      conversationHistory: mockConversations,
+      currentConversationId: 'conv-1',
+      setCurrentConversationId: jest.fn(),
+      deleteConversation: jest.fn(),
+      createConversation,
+      resetConversationTitle: jest.fn()
     }));
-
+  
     render(<ChatSideContainer />);
     
     const newChatButton = screen.getByText('新建会话');
@@ -71,7 +78,7 @@ describe('ChatSideContainer组件', () => {
   });
 
   test('编辑会话标题', async () => {
-    const resetConversationTitle = jest.fn();
+    
     ((useChatStore as unknown) as jest.Mock).mockImplementation(() => ({
       ...useChatStore(),
       resetConversationTitle
@@ -98,7 +105,6 @@ describe('ChatSideContainer组件', () => {
   });
 
   test('删除会话', () => {
-    const deleteConversation = jest.fn();
     ((useChatStore as unknown) as jest.Mock).mockImplementation(() => ({
       ...useChatStore(),
       deleteConversation
@@ -121,7 +127,6 @@ describe('ChatSideContainer组件', () => {
   });
 
   test('切换当前会话', () => {
-    const setCurrentConversationId = jest.fn();
     ((useChatStore as unknown) as jest.Mock).mockImplementation(() => ({
       ...useChatStore(),
       setCurrentConversationId

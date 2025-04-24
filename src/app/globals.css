@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/*盒子布局，padding和border包含在元素的width和height内*/
+* { box-sizing: border-box; }
+
+
 /* 自定义背景颜色 */
 .bg-custom-white {
   background-color: #ffffff; /* 白色 */

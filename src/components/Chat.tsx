@@ -7,11 +7,11 @@ import {
   Bubble, 
   Sender
 } from '@ant-design/x';
-import { Avatar, Typography } from 'antd';
-import { useChatStore, Message, RetrievalContext } from '../../stores/chatStore';
+import { Avatar, Typography,message } from 'antd';
+import { useChatStore, Message, RetrievalContext } from '../stores/chatStore';
 import MarkdownRenderer from './Markdown';
-import { UpOutlined, DownOutlined } from '@ant-design/icons';
-
+import { UpOutlined, DownOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useAgentStore } from '../stores/agentStore';
 const MemoizedMarkdownRenderer = memo(({ content }: { content: string }) => (
   <Typography>
     <MarkdownRenderer content={content} />
@@ -58,7 +58,9 @@ const Chat: React.FC<{siderWidth:number}> = ({siderWidth=300}) => {
   const { currentConversationId, setCurrentConversationId, streamRequest, createConversation, conversationHistory, conversationMessageHistory } = useChatStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const prevMessagesRef = useRef<Message[]>([]);
-  
+  //当前选中的Agent
+  const { agents, selectedAgentId,selectAgent } = useAgentStore();
+  const [deleteAgent, setDeleteAgent] = useState(false);
   // 初始化消息 - 优化初始化逻辑
   useEffect(() => {
     // 延迟执行以确保不会与SideContainer的初始化冲突
@@ -119,9 +121,11 @@ const Chat: React.FC<{siderWidth:number}> = ({siderWidth=300}) => {
     }
     setValue('');
     try {
+      console.log("发送请求")
       await streamRequest(currentConversationId, content);
     } catch (error) {
       console.error('请求失败:', error);
+      message.error("请求失败！")
     }
   };
 
@@ -153,7 +157,14 @@ const Chat: React.FC<{siderWidth:number}> = ({siderWidth=300}) => {
     } as BubbleProps;
   }, [messageRenderer, retrievalContextRenderer]); // 添加retrievalContextRenderer到依赖数组
 
-
+  //删除当前选中的Agent
+  const handleDeleteAgent = () => {
+    //删除当前选中的Agent
+    const currentAgent = agents.find(a => a.id === selectedAgentId);
+    if (currentAgent) {
+      selectAgent("");
+    }
+  }
 
   return (
     <XProvider>
@@ -188,8 +199,24 @@ const Chat: React.FC<{siderWidth:number}> = ({siderWidth=300}) => {
         </div>
         <div 
          className="fixed bottom-[0] right-0  bg-white"
-         style={{ padding: '20px', borderTop: '1px solid #eee', height: '100px', width: `calc(100% - ${siderWidth}px)` }}
+         style={{ padding: '10px', borderTop: '1px solid #eee', width: `calc(100% - ${siderWidth}px)` }}
          >
+          <div className='flex items-center gap-2 mb-2'>
+            {selectedAgentId && agents.find(a => a.id === selectedAgentId) && (
+              <div className='flex items-center gap-2 border border-2 border-blue-400 hover:border-red-300 pr-2 rounded-md cursor-pointer'
+                   onMouseEnter={() => setDeleteAgent(true)}
+                   onMouseLeave={() => setDeleteAgent(false)}
+              >
+                <span className="text-2xl">{agents.find(a => a.id === selectedAgentId)?.avatar}</span>
+                <span className="text-sm font-medium text-gray-700">{agents.find(a => a.id === selectedAgentId)?.name}</span>
+                <span className='text-sm text-red-500' style={{ display: deleteAgent ? 'block' : 'none' }}
+                   onClick={handleDeleteAgent}
+                >
+                   <DeleteOutlined />
+                </span>
+              </div>
+            )}
+          </div>
           <Sender
             ref={senderRef}
             value={value}

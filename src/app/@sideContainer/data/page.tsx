@@ -23,20 +23,13 @@ const dataSource: DataType[] = [];
 export default function DataSideContainer() {
   return (
     <div className="h-full flex flex-col p-2">
-      <div className="flex justify-start items-center border-b p-2">
+      <div className="flex justify-start items-center border-b p-4">
         <Upload>
           <Button type="primary" block icon={<UploadOutlined />}>
             上传文件
           </Button>
         </Upload>
       </div>
-      <Table<DataType>
-        columns={columns}
-        dataSource={dataSource}
-        className="flex-1"
-        pagination={false}
-        rowKey="key"
-      />
     </div>
   );
 }
