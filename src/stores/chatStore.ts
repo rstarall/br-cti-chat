@@ -1,4 +1,3 @@
-// src/stores/chatStore.ts
 import { create } from 'zustand';
 import { persist, type StorageValue } from 'zustand/middleware';
 
@@ -14,14 +13,14 @@ export type Message = {
   content: string;
   streaming?: boolean;
   loading?: boolean;
-  retrievalContexts?: RetrievalContext[];
 };
+
 export type Conversation = {
   id: string;
   title: string;
   time: string;
 };
-// 分离会话记录和消息
+
 export type ConversationMessages = {
   messages: Message[];
 };
@@ -34,7 +33,7 @@ export type ChatState = {
   setApiUrl: (url: string) => void;
   setCurrentConversationId: (id: string) => void;
   createConversation: (title: string) => string;
-  resetConversationId: (oldId: string,newId: string) => void;
+  resetConversationId: (oldId: string, newId: string) => void;
   resetConversationTitle: (conversationId: string, title: string) => void;
   deleteConversation: (conversationId: string) => boolean;
   appendMessage: (conversationId: string, msg: Message) => void;
@@ -49,34 +48,60 @@ const useStore = create<ChatState>()(
       conversationHistory: {},
       conversationMessageHistory: {},
       currentConversationId: '',
+
       setApiUrl: (url) => set({ apiUrl: url }),
       setCurrentConversationId: (id: string) => set({ currentConversationId: id }),
-      createConversation: (title) =>{
+
+      resetConversationId: (oldId: string, newId: string) => {
+        const { conversationHistory, conversationMessageHistory } = get();
+
+        // 创建新的记录
+        set({
+          conversationHistory: {
+            ...Object.fromEntries(
+              Object.entries(conversationHistory).filter(([id]) => id !== oldId)
+            ),
+            [newId]: {
+              ...conversationHistory[oldId],
+              id: newId
+            }
+          },
+          conversationMessageHistory: {
+            ...Object.fromEntries(
+              Object.entries(conversationMessageHistory).filter(([id]) => id !== oldId)
+            ),
+            [newId]: conversationMessageHistory[oldId]
+          }
+        });
+      },
+
+      createConversation: (title) => {
         const conversationId = Date.now().toString();
-        const wellcomeMsg = {
+        const welcomeMsg: Message = {
           id: Date.now().toString(),
           role: 'assistant',
           content: '你好！我是安全智能问答助手，有什么可以帮助你的吗？'
-        } as Message;
+        };
         set({
           conversationHistory: {
             ...get().conversationHistory,
             [conversationId]: {
               id: conversationId,
-              title: title,
+              title,
               time: new Date().getTime().toString(),
             }
           },
           conversationMessageHistory: {
             ...get().conversationMessageHistory,
             [conversationId]: {
-              messages: [wellcomeMsg]
+              messages: [welcomeMsg]
             }
           }
         });
-        set({currentConversationId: conversationId});
+        set({ currentConversationId: conversationId });
         return conversationId;
       },
+
       resetConversationTitle: (conversationId, title) => {
         set({
           conversationHistory: {
@@ -88,6 +113,7 @@ const useStore = create<ChatState>()(
           }
         });
       },
+
       deleteConversation: (conversationId) => {
         set({
           conversationHistory: Object.fromEntries(
@@ -99,8 +125,9 @@ const useStore = create<ChatState>()(
         });
         return true;
       },
-      appendMessage: (conversationId, msg) => 
-        set({ 
+
+      appendMessage: (conversationId, msg) =>
+        set({
           conversationMessageHistory: {
             ...get().conversationMessageHistory,
             [conversationId]: {
@@ -108,105 +135,40 @@ const useStore = create<ChatState>()(
             }
           }
         }),
-      resetConversationId: (oldId: string,newId: string) => {
-        const conversationHistory = get().conversationHistory;
-        const oldConversation = conversationHistory[oldId];
-        const oldConversationMessages = get().conversationMessageHistory[oldId];
-        if (oldConversation) {
-          delete conversationHistory[oldId];
-          set({
-            conversationHistory: {
-              ...conversationHistory,
-              [newId]: {
-                ...oldConversation,
-                id: newId
-              }
-            },
-            conversationMessageHistory: {
-              ...get().conversationMessageHistory,
-              [newId]: {
-                ...oldConversationMessages
-              }
-            }
-          });
-          set({currentConversationId: newId});
-        }
-      },
+
       updateMessage: (conversationId, id, update) =>
         set({
           conversationMessageHistory: {
             ...get().conversationMessageHistory,
             [conversationId]: {
               ...get().conversationMessageHistory[conversationId],
-              messages: get().conversationMessageHistory[conversationId].messages.map(msg => 
-                msg.id === id 
+              messages: get().conversationMessageHistory[conversationId].messages.map(msg =>
+                msg.id === id
                   ? (typeof update === 'function' ? update(msg) : { ...msg, content: update })
                   : msg
               )
             }
           }
         }),
-      streamRequest: async (conversationId, input) => {
+
+      streamRequest: async (conversationId: string, input: string) => {
         const { apiUrl, appendMessage, updateMessage, resetConversationId, resetConversationTitle } = get();
-        const userMsg = { 
-          id: Date.now().toString(), 
-          role: 'user' as const, 
-          content: input 
+        const userMsg = {
+          id: Date.now().toString(),
+          role: 'user' as const,
+          content: input
         };
-        const botMsg = { 
+        const botMsg = {
           id: (Date.now() + 1).toString(),
           role: 'assistant' as const,
           content: '',
           streaming: true,
           loading: true
         };
-        
-        // 添加消息到状态
+
+        // 添加用户消息和初始机器人消息
         appendMessage(conversationId, userMsg);
         appendMessage(conversationId, botMsg);
-
-        function parseJsonData(data: string) {
-          // 只匹配最外层的JSON对象，不匹配嵌套的JSON
-          const regex = /\{(?:[^{}]|(?:\\{)|(?:\\}))*\}/g;
-          let match;
-          let results = [];
-          
-          try {
-            //解析成功直接返回
-            const jsonData = JSON.parse(data);
-            results.push(jsonData);
-            return results;
-
-          } catch (e) {
-            
-            while ((match = regex.exec(data)) !== null) {
-              try {
-                // 预处理JSON字符串，处理转义字符
-                let jsonStr = match[0];
-                // 替换转义的引号和换行符
-                jsonStr = jsonStr.replace(/\\"/g, '"')
-                                 .replace(/\\n/g, '\n')
-                                 .replace(/\\\\/g, '\\');
-                
-                try {
-                  const jsonData = JSON.parse(jsonStr);
-                  results.push(jsonData);
-                } catch (innerError) {
-                  // 如果解析失败，尝试提取字符串内容而不是解析JSON
-                  console.warn('JSON解析失败，尝试作为纯文本处理:', jsonStr);
-                  results.push({ content: jsonStr });
-                }
-              } catch (e) {
-                console.error('处理JSON字符串失败:', match[0]);
-                // 不抛出异常，继续处理下一个匹配项
-                throw e;
-              }
-            }
-
-          }
-
-          return results;
-        }
 
         try {
           const response = await fetch(apiUrl, {
@@ -215,193 +177,121 @@ const useStore = create<ChatState>()(
             credentials: 'include',
             body: JSON.stringify({ message: input, conversation_id: conversationId })
           });
-          
+
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
-          
+
           const reader = response.body?.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-          
-          // 设置一个标志表示是否已完成
           let isCompleted = false;
-          
+
           while (reader && !isCompleted) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             buffer += decoder.decode(value, { stream: true });
-            
-            // 使用正则表达式匹配完整的SSE数据行
+
+            // 匹配data:后面的内容，考虑多行情况
             const regex = /data:\s*(.*?)(?=\n(?:data:|event:|$)|\n\n|$)/gs;
             let match;
-            let processedBuffer = '';
             let lastIndex = 0;
-            
+
             while ((match = regex.exec(buffer)) !== null) {
               const data = match[1].trim();
               lastIndex = match.index + match[0].length;
-              
+
               if (data === '[DONE]') {
                 isCompleted = true;
                 break;
               }
+
               try {
-                // 处理会话ID返回
+                // 处理 conversation_id
                 if (data.startsWith('[conversation_id]:')) {
                   const returnedConversationId = data.substring('[conversation_id]:'.length).trim();
-                  console.log('服务器返回会话ID:', returnedConversationId);
-                  // 如果需要，可以在这里更新会话ID
                   resetConversationId(conversationId, returnedConversationId);
                   conversationId = returnedConversationId;
                   continue;
                 }
-              } catch (e) {
-                console.error('解析会话ID失败:', data, e);
-              }
 
-              try{
-
-                if(data.startsWith('[conversation_title]:')){
+                // 处理 conversation_title
+                if (data.startsWith('[conversation_title]:')) {
                   const returnedConversationTitle = data.substring('[conversation_title]:'.length).trim();
-                  console.log('服务器返回会话Title:', returnedConversationTitle);
-                  // 如果需要，可以在这里更新会话Title
                   resetConversationTitle(conversationId, returnedConversationTitle);
                   continue;
                 }
 
-              }catch(e){
-                console.error('解析会话Title失败:', data, e);
-              }
-              try{
-                //处理retrievalContexts
-                if(data.startsWith('[rag_context]:')){
-                  const returnedRetrievalContexts = data.substring('[rag_context]:'.length).trim();
-                  console.log('服务器返回RAG相关信息:', returnedRetrievalContexts);
-                  const retrievalContexts = JSON.parse(returnedRetrievalContexts);
-                  if(retrievalContexts.length > 0){
-                    updateMessage(conversationId, botMsg.id, msg => ({ 
-                      ...msg, 
-                      retrievalContexts: retrievalContexts
-                    }));
-                  }
-                  continue;
-                }
-              }catch(e){
-                console.error('解析RAG相关信息失败:', data, e);
-              }
-            
-              try {
-                // 尝试解析JSON
-                const jsonObjList = parseJsonData(data)
-
-                for (const jsonObj of jsonObjList) {
-                  
-                  const obj_type = typeof jsonObj;
-                  let obj_content = "";
-                  let data_type = "";
-
-                  if(obj_type === "object"){
-                    if(jsonObj.type=="conversation"&&jsonObj.data != undefined){
-                      //只返回流式会话
-                      obj_content = jsonObj.data;
-                      data_type = jsonObj.type;
-                    }else if(jsonObj.type=="conversation_full"&&jsonObj.data != undefined){
-                      //全部会话数据的处理
-                      data_type = jsonObj.type
-                    }else{
-                      data_type = "other";
+                // 尝试解析 JSON 数据 (通常是完整响应)
+                if (data.startsWith('{') && data.endsWith('}')) {
+                  try {
+                    const jsonData = JSON.parse(data);
+                    if (jsonData.type === 'conversation_full' && jsonData.data) {
+                      // 这是完整响应，可以选择更新或不更新
+                      // 通常不需要更新，因为之前的流式内容已经累加完成
+                      continue;
                     }
-                  }else{
-                    obj_content = JSON.stringify(jsonObj);
-                    data_type = "other";
-                  }
-                    
-                  // 只有当有内容时才更新消息
-                  if (obj_content) {
-                    updateMessage(conversationId, botMsg.id, msg => ({ 
-                      ...msg, 
+                  } catch (jsonError) {
+                    // JSON解析失败但内容是括号包围的，直接显示
+                    updateMessage(conversationId, botMsg.id, (msg) => ({
+                      ...msg,
                       loading: false,
-                      content: msg.content + obj_content
+                      streaming: true,
+                      content: msg.content + data
                     }));
                   }
-                }
-              } catch (e) {
-                // 如果不是JSON，直接使用原始数据
-                if (data && data !== '[DONE]') {
-                  updateMessage(conversationId, botMsg.id, msg => ({ 
-                    ...msg, 
+                } else {
+                  // 普通文本，直接追加显示
+                  updateMessage(conversationId, botMsg.id, (msg) => ({
+                    ...msg,
                     loading: false,
+                    streaming: true,
                     content: msg.content + data
                   }));
                 }
+              } catch (error) {
+                console.error('Data processing failed:', error);
               }
-              
-              processedBuffer += match[0];
             }
-            
+
             // 保留未处理的部分为新的缓冲区
             if (lastIndex > 0) {
               buffer = buffer.substring(lastIndex);
             }
           }
-          
-          // 处理最后可能剩余的缓冲区数据
-          if (buffer.trim()) {
-            const dataMatch = buffer.match(/data:\s*(.*)/);
-            if (dataMatch && dataMatch[1] && dataMatch[1] !== '[DONE]') {
-              try {
-                const jsonData = JSON.parse(dataMatch[1].trim());
-                let content = '';
-                
-                if (jsonData.content) {
-                  content = jsonData.content;
-                } else if (jsonData.text) {
-                  content = jsonData.text;
-                } else if (jsonData.choices && jsonData.choices[0]?.delta?.content) {
-                  content = jsonData.choices[0].delta.content;
-                }
-                
-                if (content) {
-                  updateMessage(conversationId, botMsg.id, msg => ({
-                    ...msg,
-                    content: msg.content + content
-                  }));
-                }
-              } catch (e) {
-                // 不是JSON，使用原始内容
-                updateMessage(conversationId, botMsg.id, msg => ({
-                  ...msg,
-                  content: msg.content + dataMatch[1].trim()
-                }));
-              }
-            }
-          }
-          
-          // 更新最终状态
-          updateMessage(conversationId, botMsg.id, msg => ({ 
-            ...msg, 
+
+          // 确保在退出之前设置最终状态
+          updateMessage(conversationId, botMsg.id, (msg) => ({
+            ...msg,
             streaming: false,
             loading: false
           }));
+
         } catch (error) {
-          updateMessage(conversationId, botMsg.id, msg => ({ 
+          updateMessage(conversationId, botMsg.id, (msg) => ({
             ...msg,
-            content: '⚠️ 连接服务器失败', 
-            streaming: false, 
-            loading: false 
+            content: '⚠️ 连接服务器失败',
+            streaming: false,
+            loading: false
           }));
           console.error('流式传输错误:', error);
-          throw new Error(`HTTP error! status: ${error}`);
         }
-      },
+      }
     }),
     {
       name: 'chat-storage',
-      partialize: (state) => ({ apiUrl: state.apiUrl, conversationHistory: state.conversationHistory }),
+      partialize: (state) => ({
+        apiUrl: state.apiUrl,
+        conversationHistory: state.conversationHistory,
+        conversationMessageHistory: state.conversationMessageHistory
+      }),
       storage: typeof window !== 'undefined' ? {
-        getItem: (name): StorageValue<{ apiUrl: string, conversationHistory: Record<string, Conversation> }> | null => {
+        getItem: (name): StorageValue<{
+          apiUrl: string,
+          conversationHistory: Record<string, Conversation>,
+          conversationMessageHistory: Record<string, ConversationMessages>
+        }> | null => {
           try {
             const str = localStorage.getItem(name);
             return str ? JSON.parse(str) : null;
@@ -410,7 +300,11 @@ const useStore = create<ChatState>()(
             return null;
           }
         },
-        setItem: (name, value: StorageValue<{ apiUrl: string, conversationHistory: Record<string, Conversation> }>) => {
+        setItem: (name, value: StorageValue<{
+          apiUrl: string,
+          conversationHistory: Record<string, Conversation>,
+          conversationMessageHistory: Record<string, ConversationMessages>
+        }>) => {
           try {
             localStorage.setItem(name, JSON.stringify(value));
           } catch (err) {
@@ -419,7 +313,7 @@ const useStore = create<ChatState>()(
         },
         removeItem: (name) => {
           try {
-            sessionStorage.removeItem(name);
+            localStorage.removeItem(name);
           } catch (err) {
             console.warn('存储删除失败:', err);
           }

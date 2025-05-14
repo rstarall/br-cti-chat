@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { ConfigProvider } from 'antd';
 import MainLayout from '@/components/Index';
-import MainPage from '@/app/chat/page'
 import "@/app/globals.css";
 
 export const metadata: Metadata = {

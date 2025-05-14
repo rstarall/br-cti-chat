@@ -16,7 +16,7 @@ interface SiderWidthContextType {
 
 export const FixedSiderWidthContext = createContext<SiderWidthContextType>({
   width: defaultSiderWidth,
-  setWidth: () => {},
+  setWidth: () => { },
 });
 
 export const useFixedSiderWidth = () => useContext(FixedSiderWidthContext);
@@ -28,40 +28,40 @@ export default function MainLayout({
   children: React.ReactNode;
   sideContainer: React.ReactNode;
 }) {
-  
+
 
   const [fixedSiderWidth, setFixedSiderWidth] = useState(defaultSiderWidth);
   const [siderWidth, setSiderWidth] = useState(50);
-  const [siderPageWidth, setSiderPageWidth] = useState(defaultSiderWidth-50);
-  const [onlyMainPage,setOnlyMainPage] = useState(true)
-  const [currentPagePath,setCurrentPagePath] = useState('/chat')
+  const [siderPageWidth, setSiderPageWidth] = useState(defaultSiderWidth - 50);
+  const [onlyMainPage, setOnlyMainPage] = useState(true)
+  const [currentPagePath, setCurrentPagePath] = useState('/chat')
   useEffect(() => {
     setSiderWidth(50);
-    setSiderPageWidth(fixedSiderWidth-50);
+    setSiderPageWidth(fixedSiderWidth - 50);
     console.log('fixedSiderWidth changed:', fixedSiderWidth);
     // 监听窗口大小变化
   }, [fixedSiderWidth]);
 
   const handleMouseEnter = useCallback(() => {
     setSiderWidth(140);
-    setSiderPageWidth(fixedSiderWidth-140);
+    setSiderPageWidth(fixedSiderWidth - 140);
   }, [fixedSiderWidth]);
-  
+
   const handleMouseLeave = useCallback(() => {
     setSiderWidth(50);
-    setSiderPageWidth(fixedSiderWidth-50);
+    setSiderPageWidth(fixedSiderWidth - 50);
   }, [fixedSiderWidth]);
-  
+
   return (
     <Layout className="h-screen">
       {/* Header */}
       <div className="bg-white fixed top-0 left-0 right-0 z-10 h-[50px]">
         <ChatHeader />
       </div>
-      
+
       <Layout className="overflow-hidden h-[calc(100vh-50px)] mt-[50px]"  >
-        <Sider 
-          theme="light" 
+        <Sider
+          theme="light"
           width={siderWidth}
           className="!border-r-0 border-r border-gray-200 overflow-hidden transition-all duration-300"
           onMouseEnter={handleMouseEnter}
@@ -72,7 +72,7 @@ export default function MainLayout({
 
         <Layout className="!border-r-0 w-full border-r overflow-hidden  w-full bg-white">
 
-          <Sider 
+          <Sider
             width={siderPageWidth}
             theme="light"
             className="!border-r-0 border-r border-gray-200"
@@ -80,15 +80,16 @@ export default function MainLayout({
             {sideContainer}
           </Sider>
 
-        <Content className="h-full" style={{width: `calc(100% - ${fixedSiderWidth}px)`}}>
-          <FixedSiderWidthContext.Provider value={{
-            width: fixedSiderWidth,
-            setWidth: setFixedSiderWidth
-          }}>
-            {onlyMainPage?<MainPage/>:children}
-          </FixedSiderWidthContext.Provider>
-        </Content>
-        </Layout>       
+          <Content className="h-full" style={{ width: `calc(100% - ${fixedSiderWidth}px)` }}>
+            <FixedSiderWidthContext.Provider value={{
+              width: fixedSiderWidth,
+              setWidth: setFixedSiderWidth
+            }}>
+              {children}
+            </FixedSiderWidthContext.Provider>
+          </Content>
+
+        </Layout>
       </Layout>
     </Layout>
   );
