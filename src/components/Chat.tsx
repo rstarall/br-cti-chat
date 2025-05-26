@@ -3,11 +3,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import type { BubbleProps } from '@ant-design/x';
 import { XProvider, Bubble, Sender } from '@ant-design/x';
-import { Avatar, Typography, message } from 'antd';
+import { Avatar, Typography, message, Switch, Select, Space, Divider, Tag, Dropdown, Button } from 'antd';
+import { UpOutlined, DownOutlined, DeleteOutlined, DatabaseOutlined, PartitionOutlined, CaretDownOutlined } from '@ant-design/icons';
 import { useChatStore, Message } from '../stores/chatStore';
+import { useKnowledgeStore } from '../stores/knowledgeStore';
 import MarkdownRenderer from './Markdown';
-import { UpOutlined, DownOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useAgentStore } from '../stores/agentStore';
+
+const { Option } = Select;
 
 const MemoizedMarkdownRenderer = memo(({ content }: { content: string }) => (
   <Typography>
@@ -21,12 +24,52 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
   const senderRef = useRef<any>(null);
   const containerRef = useRef<any>(null);
   const bottomRef = useRef<any>(null);
-  const { currentConversationId, setCurrentConversationId, streamRequest, createConversation, conversationHistory, conversationMessageHistory } = useChatStore();
+
+  const {
+    currentConversationId,
+    setCurrentConversationId,
+    streamRequest,
+    createConversation,
+    conversationHistory,
+    conversationMessageHistory,
+    meta,
+    setMeta,
+    currentModel,
+    availableModels,
+    modelProviders,
+    fetchModels
+  } = useChatStore();
+
+  const { databases, fetchDatabases } = useKnowledgeStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const prevMessagesRef = useRef<Message[]>([]);
+
   // 当前选中的Agent
   const { agents, selectedAgentId, selectAgent } = useAgentStore();
   const [deleteAgent, setDeleteAgent] = useState(false);
+
+  // 初始化知识库数据
+  useEffect(() => {
+    if (databases.length === 0) {
+      fetchDatabases().catch(console.error);
+    }
+  }, [databases.length, fetchDatabases]);
+
+  // 初始化时获取默认模型提供商的模型列表
+  useEffect(() => {
+    const initializeModels = async () => {
+      // 只获取deepseek的模型列表
+      if (!availableModels['deepseek']) {
+        try {
+          await fetchModels('deepseek');
+        } catch (error) {
+          console.error('获取deepseek模型列表失败:', error);
+        }
+      }
+    };
+
+    initializeModels();
+  }, []);  // 只在组件初始化时运行
 
   // 定义滚动函数
   const autoScrollToBottom = useCallback(() => {
@@ -118,6 +161,82 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
     }
   };
 
+  // 处理知识库选择
+  const handleDatabaseChange = (value: string) => {
+    // 根据选择的数据库ID，查找对应的db_id
+    const selectedDb = databases.find(db => db.id === value);
+    if (selectedDb) {
+      console.log('选择知识库:', selectedDb.name, '数据库ID:', selectedDb.db_id);
+      setMeta({ db_id: selectedDb.db_id }); // 使用db_id而不是id
+    } else {
+      console.log('清除知识库选择');
+      setMeta({ db_id: '' });
+    }
+  };
+
+  // 处理知识图谱开关
+  const handleGraphToggle = (checked: boolean) => {
+    setMeta({ use_graph: checked });
+  };
+
+  // 处理模型提供商选择
+  const handleProviderChange = async (provider: string) => {
+    setMeta({ model_provider: provider, model_name: '' });
+    if (provider) {
+      await fetchModels(provider);
+    }
+  };
+
+  // 处理模型选择
+  const handleModelChange = (modelName: string) => {
+    setMeta({ model_name: modelName });
+  };
+
+  // 创建模型选择菜单项
+  const getModelMenuItems = () => {
+    const items: any[] = [];
+
+    modelProviders.forEach(provider => {
+      const providerModels = availableModels[provider] || [];
+      if (providerModels.length > 0) {
+        items.push({
+          type: 'group',
+          label: provider === 'deepseek' ? 'DeepSeek' : provider.toUpperCase(),
+          children: providerModels.map(model => ({
+            key: `${provider}-${model}`,
+            label: model,
+            onClick: () => {
+              setMeta({ model_provider: provider, model_name: model });
+            }
+          }))
+        });
+      } else {
+        // 如果没有加载模型，添加提供商选项来触发加载
+        items.push({
+          key: provider,
+          label: `${provider === 'deepseek' ? 'DeepSeek' : provider.toUpperCase()}`,
+          onClick: () => handleProviderChange(provider)
+        });
+      }
+    });
+
+    return items;
+  };
+
+  // 获取当前显示的模型名称
+  const getCurrentModelDisplay = () => {
+    if (meta.model_name && meta.model_provider) {
+      if (meta.model_provider === 'deepseek') {
+        return `DeepSeek ${meta.model_name}`;
+      }
+      return `${meta.model_provider.toUpperCase()} ${meta.model_name}`;
+    }
+    if (currentModel) {
+      return currentModel;
+    }
+    return 'DeepSeek-chat';
+  };
+
   // 使用 useMemo 缓存消息渲染函数
   const messageRenderer = useMemo(() => {
     return (content: string) => <MemoizedMarkdownRenderer content={content} />;
@@ -172,8 +291,51 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
             opacity: 1
           }}
         >
+          {/* ChatGPT样式的模型选择器 */}
+          <div className="mb-4 flex justify-center">
+            <Dropdown
+              menu={{ items: getModelMenuItems() }}
+              trigger={['click']}
+              placement="bottomCenter"
+            >
+              <Button
+                type="text"
+                className="flex items-center gap-2 px-6 py-3 text-xl font-semibold hover:bg-gray-50 rounded-xl border border-gray-200 hover:border-gray-300 transition-all"
+                style={{
+                  border: '1px solid #e5e7eb',
+                  boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+                  background: 'white'
+                }}
+              >
+                <span>{getCurrentModelDisplay()}</span>
+                <CaretDownOutlined className="text-sm opacity-60" />
+              </Button>
+            </Dropdown>
+          </div>
+
+          {/* 功能状态指示 */}
+          {(meta.use_graph || meta.db_id) && (
+            <div className="mb-4 flex justify-center">
+              <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                {meta.use_graph && (
+                  <span className="flex items-center gap-1">
+                    <PartitionOutlined />
+                    知识图谱
+                  </span>
+                )}
+                {meta.use_graph && meta.db_id && <span>•</span>}
+                {meta.db_id && (
+                  <span className="flex items-center gap-1">
+                    <DatabaseOutlined />
+                    {databases.find(db => db.db_id === meta.db_id)?.name || '知识库'}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           <Bubble.List
-            className='bg-white pb-[100px] overflow-hidden'
+            className='bg-white pb-[140px] overflow-hidden'
             items={messages.map((msg) => commonBubble(msg))}
           />
 
@@ -181,12 +343,14 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
             消息数: {messages.length}
           </div>
         </div>
+
         <div
           className="fixed bottom-[0] right-0 bg-white"
           style={{ padding: '10px', borderTop: '1px solid #eee', width: `calc(100% - ${siderWidth}px)` }}
         >
-          <div className='flex items-center gap-2 mb-2'>
-            {selectedAgentId && agents.find(a => a.id === selectedAgentId) && (
+          {/* Agent显示 */}
+          {selectedAgentId && agents.find(a => a.id === selectedAgentId) && (
+            <div className='flex items-center gap-2 mb-2'>
               <div className='flex items-center gap-2 border border-2 border-blue-400 hover:border-red-300 pr-2 rounded-md cursor-pointer'
                 onMouseEnter={() => setDeleteAgent(true)}
                 onMouseLeave={() => setDeleteAgent(false)}
@@ -199,8 +363,10 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
                   <DeleteOutlined />
                 </span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* 输入框 */}
           <Sender
             ref={senderRef}
             value={value}
@@ -209,6 +375,45 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
             placeholder="请输入消息..."
             submitType="enter"
           />
+
+          {/* 功能选择区域 */}
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {/* 知识库选择 */}
+            <div className="flex items-center gap-1">
+              <Select
+                placeholder="选择知识库"
+                allowClear
+                size="small"
+                style={{ minWidth: 120 }}
+                value={databases.find(db => db.db_id === meta.db_id)?.id || undefined}
+                onChange={handleDatabaseChange}
+                suffixIcon={<DatabaseOutlined />}
+              >
+                {databases.map(db => (
+                  <Option key={db.id} value={db.id}>
+                    {db.name}
+                  </Option>
+                ))}
+              </Select>
+              {meta.db_id && (
+                <Tag color="blue">
+                  知识库已选
+                </Tag>
+              )}
+            </div>
+
+            {/* 知识图谱按钮 */}
+            <div
+              className={`flex items-center gap-1 px-3 py-1 rounded-full border cursor-pointer transition-all ${meta.use_graph
+                ? 'bg-blue-500 text-white border-blue-500'
+                : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                }`}
+              onClick={() => handleGraphToggle(!meta.use_graph)}
+            >
+              <PartitionOutlined />
+              <span className="text-sm">知识图谱</span>
+            </div>
+          </div>
         </div>
       </div>
     </XProvider>

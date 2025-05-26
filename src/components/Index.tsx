@@ -4,8 +4,8 @@ import { Layout } from 'antd';
 import Sidebar from './Sidebar';
 import ChatHeader from './Header';
 import React, { useState, useCallback, useEffect, createContext, useContext } from 'react';
-import MainPage from '@/app/page';
-const { Content, Sider, Header } = Layout;
+import { usePathname } from 'next/navigation';
+const { Content, Sider } = Layout;
 
 const defaultSiderWidth = 340;
 // 创建宽度上下文
@@ -28,18 +28,18 @@ export default function MainLayout({
   children: React.ReactNode;
   sideContainer: React.ReactNode;
 }) {
-
-
+  const pathname = usePathname();
   const [fixedSiderWidth, setFixedSiderWidth] = useState(defaultSiderWidth);
   const [siderWidth, setSiderWidth] = useState(50);
   const [siderPageWidth, setSiderPageWidth] = useState(defaultSiderWidth - 50);
-  const [onlyMainPage, setOnlyMainPage] = useState(true)
-  const [currentPagePath, setCurrentPagePath] = useState('/chat')
+
+  // 判断是否显示sideContainer（data页面和kg页面不显示）
+  const shouldShowSideContainer = !pathname.startsWith('/data') && !pathname.startsWith('/kg');
+
   useEffect(() => {
     setSiderWidth(50);
     setSiderPageWidth(fixedSiderWidth - 50);
     console.log('fixedSiderWidth changed:', fixedSiderWidth);
-    // 监听窗口大小变化
   }, [fixedSiderWidth]);
 
   const handleMouseEnter = useCallback(() => {
@@ -59,7 +59,8 @@ export default function MainLayout({
         <ChatHeader />
       </div>
 
-      <Layout className="overflow-hidden h-[calc(100vh-50px)] mt-[50px]"  >
+      <Layout className="overflow-hidden h-[calc(100vh-50px)] mt-[50px]">
+        {/* 左侧导航栏 */}
         <Sider
           theme="light"
           width={siderWidth}
@@ -70,17 +71,30 @@ export default function MainLayout({
           <Sidebar />
         </Sider>
 
-        <Layout className="!border-r-0 w-full border-r overflow-hidden  w-full bg-white">
+        {/* 主内容区域 */}
+        {shouldShowSideContainer ? (
+          // 有sideContainer的布局（chat等页面）
+          <Layout className="!border-r-0 w-full border-r overflow-hidden w-full bg-white">
+            <Sider
+              width={siderPageWidth}
+              theme="light"
+              className="!border-r-0 border-r border-gray-200"
+            >
+              {sideContainer}
+            </Sider>
 
-          <Sider
-            width={siderPageWidth}
-            theme="light"
-            className="!border-r-0 border-r border-gray-200"
-          >
-            {sideContainer}
-          </Sider>
-
-          <Content className="h-full" style={{ width: `calc(100% - ${fixedSiderWidth}px)` }}>
+            <Content className="h-full" style={{ width: `calc(100% - ${fixedSiderWidth}px)` }}>
+              <FixedSiderWidthContext.Provider value={{
+                width: fixedSiderWidth,
+                setWidth: setFixedSiderWidth
+              }}>
+                {children}
+              </FixedSiderWidthContext.Provider>
+            </Content>
+          </Layout>
+        ) : (
+          // 没有sideContainer的布局（data页面和kg页面）
+          <Content className="h-full bg-white flex-1">
             <FixedSiderWidthContext.Provider value={{
               width: fixedSiderWidth,
               setWidth: setFixedSiderWidth
@@ -88,8 +102,7 @@ export default function MainLayout({
               {children}
             </FixedSiderWidthContext.Provider>
           </Content>
-
-        </Layout>
+        )}
       </Layout>
     </Layout>
   );
