@@ -32,15 +32,14 @@ export default function ChatSideContainer() {
   const getSortedItems = useCallback(() => {
     // 修改排序逻辑，使最新的对话排在最前面（降序排列）
     const sortedItems = memoizedItems.sort((a, b) => (new Date(b.created_time).getTime() - new Date(a.created_time).getTime()));
-    if(!isInit){
-      if(sortedItems.length>0){
-        setCurrentConversationId(sortedItems[0].id);
-        setIsInit(true);
-      }
-      
+
+    // 移除自动选择逻辑，让Chat组件的initializeApp来处理
+    if (!isInit) {
+      setIsInit(true);
     }
+
     return sortedItems;
-  }, [memoizedItems]);
+  }, [memoizedItems, isInit]);
 
   // 2. 使用 useEffect 更新 items 状态
   useEffect(() => {
@@ -102,21 +101,21 @@ export default function ChatSideContainer() {
         <div className="flex justify-between items-center ">
           <span className='overflow-hidden text-ellipsis whitespace-nowrap'>{(item.title===''||item.title==null)?'新对话':item.title}</span>
           <div className='flex items-center gap-2'>
-            <Button 
-              type="text" 
-              icon={<EditOutlined />} 
+            <Button
+              type="text"
+              icon={<EditOutlined />}
               onClick={(e) => {
                 e.stopPropagation();
                 handleEdit(item.id);
-              }} 
+              }}
             />
-            <Button 
-              type="text" 
-              icon={<DeleteOutlined />} 
+            <Button
+              type="text"
+              icon={<DeleteOutlined />}
               onClick={(e) => {
                 e.stopPropagation();
                 handleDelete(item.id);
-              }} 
+              }}
             />
           </div>
         </div>

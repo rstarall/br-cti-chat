@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { KnowledgeAPI } from '../api';
 
 export type KnowledgeDatabase = {
     id: string;
@@ -55,8 +56,6 @@ type KnowledgeState = {
     clearPendingFiles: (databaseId: string) => void;
 };
 
-const API_BASE_URL = 'http://localhost:8000';
-
 export const useKnowledgeStore = create<KnowledgeState>()(
     persist(
         (set, get) => ({
@@ -69,20 +68,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                 try {
                     console.log('开始获取知识库列表');
 
-                    const response = await fetch(`${API_BASE_URL}/data/`, {
-                        method: 'GET',
-                        credentials: 'include'
-                    });
-
-                    console.log('获取知识库列表响应状态:', response.status, response.statusText);
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('获取知识库列表API错误:', { status: response.status, statusText: response.statusText, errorText });
-                        throw new Error(`获取知识库列表失败: ${response.status} - ${errorText}`);
-                    }
-
-                    const data = await response.json();
+                    const data = await KnowledgeAPI.getDatabases();
                     console.log('知识库列表API响应数据:', data);
 
                     const databases = data.databases || [];
@@ -97,21 +83,10 @@ export const useKnowledgeStore = create<KnowledgeState>()(
 
             createDatabase: async (name, description) => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/data/`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            database_name: name,
-                            description: description
-                        })
+                    await KnowledgeAPI.createDatabase({
+                        database_name: name,
+                        description: description
                     });
-
-                    if (!response.ok) {
-                        throw new Error(`创建知识库失败: ${response.status}`);
-                    }
 
                     await get().fetchDatabases();
                 } catch (error) {
@@ -128,15 +103,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                         throw new Error('知识库不存在');
                     }
 
-                    // 使用查询参数传递db_id进行删除
-                    const response = await fetch(`${API_BASE_URL}/data/?db_id=${database.db_id}`, {
-                        method: 'DELETE',
-                        credentials: 'include'
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`删除知识库失败: ${response.status}`);
-                    }
+                    await KnowledgeAPI.deleteDatabase(database.db_id);
 
                     set((state) => ({
                         databases: state.databases.filter(db => db.id !== databaseId),
@@ -165,24 +132,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                 try {
                     console.log('开始获取知识库文件列表:', { databaseId });
 
-                    // 使用新的专门的文件列表API
-                    const url = `${API_BASE_URL}/data/files?db_id=${databaseId}`;
-                    console.log('请求URL:', url);
-
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        credentials: 'include'
-                    });
-
-                    console.log('响应状态:', response.status, response.statusText);
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('API错误响应:', { status: response.status, statusText: response.statusText, errorText });
-                        throw new Error(`获取知识库文件列表失败: ${response.status} - ${errorText}`);
-                    }
-
-                    const data = await response.json();
+                    const data = await KnowledgeAPI.getFilesList(databaseId);
                     console.log('API响应数据:', data);
 
                     // 检查API状态
@@ -257,22 +207,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
             // 只上传文件，不生成分块
             uploadFile: async (databaseId, file) => {
                 try {
-                    const formData = new FormData();
-                    formData.append('file', file);
-
-                    // 现在databaseId实际上就是db_id，直接使用
-                    const uploadResponse = await fetch(`${API_BASE_URL}/data/upload?db_id=${databaseId}`, {
-                        method: 'POST',
-                        credentials: 'include',
-                        body: formData
-                    });
-
-                    if (!uploadResponse.ok) {
-                        const errorText = await uploadResponse.text();
-                        throw new Error(`上传文件失败: ${uploadResponse.status} - ${errorText}`);
-                    }
-
-                    const uploadResult = await uploadResponse.json();
+                    const uploadResult = await KnowledgeAPI.uploadFile(databaseId, file);
 
                     const filePath = uploadResult.file_path;
 
@@ -298,52 +233,22 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                     // 步骤1: 文件已经通过 /data/upload 上传完成，filePaths 包含文件路径
 
                     // 步骤2: 调用 /data/file-to-chunk 进行文件分块
-                   // console.log('步骤2: 调用 file-to-chunk 进行分块处理');
-                    const chunkResponse = await fetch(`${API_BASE_URL}/data/file-to-chunk`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            files: filePaths,
-                            params: {
-                                chunk_size: params.chunk_size || 1000,
-                                chunk_overlap: params.chunk_overlap || 200,
-                                use_parser: params.use_parser || false
-                            }
-                        })
+                    const chunkResult = await KnowledgeAPI.fileToChunk({
+                        files: filePaths,
+                        params: {
+                            chunk_size: params.chunk_size || 1000,
+                            chunk_overlap: params.chunk_overlap || 200,
+                            use_parser: params.use_parser || false
+                        }
                     });
-
-                    if (!chunkResponse.ok) {
-                        const errorText = await chunkResponse.text();
-                        throw new Error(`文件分块处理失败: ${chunkResponse.status} - ${errorText}`);
-                    }
-
-                    const chunkResult = await chunkResponse.json();
                     //console.log('文件分块成功:', chunkResult);
 
                     // 步骤3: 调用 /data/add-by-chunks 将分块添加到数据库
-                    //console.log('步骤3: 调用 add-by-chunks 添加到数据库');
-                    const addResponse = await fetch(`${API_BASE_URL}/data/add-by-chunks`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            db_id: databaseId,
-                            file_chunks: chunkResult
-                        })
+                    await KnowledgeAPI.addByChunks({
+                        db_id: databaseId,
+                        file_chunks: chunkResult
                     });
-
-                    if (!addResponse.ok) {
-                        const errorText = await addResponse.text();
-                        throw new Error(`添加分块到数据库失败: ${addResponse.status} - ${errorText}`);
-                    }
-
-                    const addResult = await addResponse.json();
-                    //console.log('添加分块成功:', addResult);
+                    //console.log('添加分块成功');
 
                     // 清除已处理的待处理文件
                     get().clearPendingFiles(databaseId);
@@ -380,25 +285,10 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                 try {
                     console.log('删除文件:', { databaseId, fileId });
 
-                    // 使用新的专门的文件删除API
-                    const response = await fetch(`${API_BASE_URL}/data/file`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            db_id: databaseId,
-                            file_id: fileId
-                        })
+                    const result = await KnowledgeAPI.deleteFile({
+                        db_id: databaseId,
+                        file_id: fileId
                     });
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`删除文件失败: ${response.status} - ${errorText}`);
-                    }
-
-                    const result = await response.json();
                     console.log('删除文件API响应:', result);
 
                     // 检查API状态
@@ -424,24 +314,10 @@ export const useKnowledgeStore = create<KnowledgeState>()(
             queryTest: async (databaseId, query) => {
                 try {
                     // 现在databaseId实际上就是db_id，直接使用
-                    const response = await fetch(`${API_BASE_URL}/data/query-test`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            query,
-                            meta: { db_id: databaseId }
-                        })
+                    return await KnowledgeAPI.queryTest({
+                        query,
+                        meta: { db_id: databaseId }
                     });
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`检索测试失败: ${response.status} - ${errorText}`);
-                    }
-
-                    return await response.json();
                 } catch (error) {
                     console.error('检索测试失败:', error);
                     throw error;

@@ -9,6 +9,7 @@ import { useChatStore, Message } from '../stores/chatStore';
 import { useKnowledgeStore } from '../stores/knowledgeStore';
 import MarkdownRenderer from './Markdown';
 import { useAgentStore } from '../stores/agentStore';
+import RetrievedDocs from './RetrievedDocs';
 
 const { Option } = Select;
 
@@ -37,7 +38,9 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
     currentModel,
     availableModels,
     modelProviders,
-    fetchModels
+    fetchModels,
+    isInitialized,
+    initializeApp
   } = useChatStore();
 
   const { databases, fetchDatabases } = useKnowledgeStore();
@@ -81,60 +84,33 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
     }, 100);
   }, []);
 
-  // 初始化消息 - 优化初始化逻辑
+  // 应用初始化 - 只在组件首次加载时执行一次
   useEffect(() => {
-    // 延迟执行以确保不会与SideContainer的初始化冲突
-    setTimeout(() => {
-      // 获取最新的状态
-      const currentState = useChatStore.getState();
-      const currentHistory = currentState.conversationHistory;
-
-      if (Object.keys(currentHistory).length === 0) {
-        createConversation('');
-      } else {
-        const lastConversationId = Object.keys(currentHistory)[Object.keys(currentHistory).length - 1];
-        if (lastConversationId) {
-          setCurrentConversationId(lastConversationId);
-        }
-      }
-      autoScrollToBottom();
-    }, 0); // 使用 setTimeout 确保在所有组件渲染完成后执行
-  }, []);
-
-  // 优化消息更新逻辑
-  useEffect(() => {
-    // 如果当前没有选择会话，但有历史会话，则选择最后一个
-    if (!currentConversationId) {
-      const historyKeys = Object.keys(conversationHistory);
-      if (historyKeys.length > 0) {
-        const lastId = historyKeys[historyKeys.length - 1];
-        setCurrentConversationId(lastId);
-        return; // 等待下一次更新
-      } else {
-        // 如果没有任何会话，则创建一个新会话
-        const newId = createConversation('');
-        setCurrentConversationId(newId);
-        return; // 等待下一次更新
-      }
+    if (!isInitialized) {
+      console.log('Chat组件：开始初始化应用');
+      initializeApp();
     }
+  }, [isInitialized, initializeApp]);
 
-    // 确保会话ID存在且有对应的消息
+  // 消息更新逻辑 - 当会话ID或消息历史变化时更新
+  useEffect(() => {
     if (currentConversationId && conversationMessageHistory[currentConversationId]) {
       const currentMessages = conversationMessageHistory[currentConversationId].messages || [];
       console.log(`更新消息列表，会话ID: ${currentConversationId}, 消息数: ${currentMessages.length}`);
 
-      // 消息变化立即更新，不再进行深度比较
+      // 消息变化立即更新
       setMessages([...currentMessages]);
 
-      // 有新消息或内容变化时，滚动到底部
+      // 有新消息时，滚动到底部
       autoScrollToBottom();
 
       // 保存当前消息以备后续比较
       prevMessagesRef.current = [...currentMessages];
-    } else {
+    } else if (currentConversationId) {
       console.log(`会话ID ${currentConversationId} 没有对应的消息记录`);
+      setMessages([]);
     }
-  }, [currentConversationId, conversationMessageHistory, conversationHistory, createConversation, setCurrentConversationId, autoScrollToBottom]);
+  }, [currentConversationId, conversationMessageHistory, autoScrollToBottom]);
 
   // 优化提交处理函数
   const handleSubmit = async (content: string) => {
@@ -239,7 +215,16 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
 
   // 使用 useMemo 缓存消息渲染函数
   const messageRenderer = useMemo(() => {
-    return (content: string) => <MemoizedMarkdownRenderer content={content} />;
+    return (content: string, msg?: Message) => (
+      <div>
+        {/* 召回信息显示 */}
+        {msg?.retrieved_docs && msg.retrieved_docs.length > 0 && (
+          <RetrievedDocs documents={msg.retrieved_docs} />
+        )}
+        {/* 消息内容 */}
+        <MemoizedMarkdownRenderer content={content} />
+      </div>
+    );
   }, []);
 
   // 优化 commonBubble，添加 Markdown 到依赖数组
@@ -248,7 +233,7 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
     return {
       key: msg.id,
       content: msg.content,
-      messageRender: messageRenderer, // 渲染函数
+      messageRender: (content: string) => messageRenderer(content, msg), // 传递消息对象
       placement: msg.role === 'user' ? 'end' as const : 'start' as const,
       variant: msg.role === 'user' ? 'filled' as const : 'outlined' as const,
       loading: msg.loading,

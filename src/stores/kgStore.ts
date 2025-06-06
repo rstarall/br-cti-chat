@@ -1,7 +1,5 @@
 import { create } from 'zustand';
-
-// 后端API基础URL
-const API_BASE_URL = 'http://localhost:8000';
+import { GraphAPI } from '../api';
 
 interface GraphNode {
     id: string;
@@ -74,20 +72,7 @@ export const useKGStore = create<KGStore>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             console.log('开始获取图谱信息');
-            const response = await fetch(`${API_BASE_URL}/data/graph`, {
-                method: 'GET',
-                credentials: 'include'
-            });
-
-            console.log('图谱信息API响应状态:', response.status);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('图谱信息API错误:', errorText);
-                throw new Error(`获取图谱信息失败: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
+            const data = await GraphAPI.getGraphInfo();
             console.log('图谱信息原始数据:', data);
 
             set({
@@ -116,20 +101,7 @@ export const useKGStore = create<KGStore>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             console.log(`开始获取${num}个图谱节点`);
-            const response = await fetch(`${API_BASE_URL}/data/graph/nodes?kgdb_name=neo4j&num=${num}`, {
-                method: 'GET',
-                credentials: 'include'
-            });
-
-            console.log('图谱节点API响应状态:', response.status);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('图谱节点API错误:', errorText);
-                throw new Error(`获取图谱节点失败: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
+            const data = await GraphAPI.getGraphNodes('neo4j', num);
             console.log('图谱节点原始数据:', data);
 
             if (data.result && data.result.nodes && data.result.edges) {
@@ -204,17 +176,7 @@ export const useKGStore = create<KGStore>((set, get) => ({
         set({ searchLoading: true, error: null });
         try {
             console.log(`开始搜索实体: ${entityName}`);
-            const response = await fetch(`${API_BASE_URL}/data/graph/node?entity_name=${encodeURIComponent(entityName)}`, {
-                method: 'GET',
-                credentials: 'include'
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `查询失败：${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const data = await GraphAPI.getGraphNode(entityName);
             console.log('节点搜索结果:', data);
 
             if (data.result && data.result.nodes && data.result.edges) {
@@ -284,21 +246,9 @@ export const useKGStore = create<KGStore>((set, get) => ({
     checkDatabaseStatus: async () => {
         try {
             console.log('检查数据库状态');
-            const response = await fetch(`${API_BASE_URL}/data/graph`, {
-                method: 'GET',
-                credentials: 'include'
-            });
-
-            console.log('数据库状态检查响应:', response.status);
-
-            if (response.ok) {
-                const data = await response.json();
-                console.log('数据库状态检查返回数据:', data);
-                set({ isRunning: data.status === 'open' });
-            } else {
-                console.log('数据库状态检查失败:', response.status);
-                set({ isRunning: false });
-            }
+            const data = await GraphAPI.getGraphInfo();
+            console.log('数据库状态检查返回数据:', data);
+            set({ isRunning: data.status === 'open' });
         } catch (error) {
             console.error('检查数据库状态失败:', error);
             set({ isRunning: false });
@@ -310,28 +260,15 @@ export const useKGStore = create<KGStore>((set, get) => ({
         try {
             console.log('开始通过JSONL添加实体:', filePath);
 
-            const response = await fetch(`${API_BASE_URL}/data/graph/add-by-jsonl`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    file_path: filePath
-                }),
+            const data = await GraphAPI.addEntitiesByJsonl({
+                file_path: filePath
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `添加实体失败: ${response.status}`);
-            }
-
-            const data = await response.json();
             console.log('添加实体结果:', data);
 
             set({ isLoading: false });
             return {
                 success: data.status === 'success',
-                message: data.message
+                message: data.message || '操作完成'
             };
         } catch (error: any) {
             console.error('添加实体错误:', error);
@@ -351,22 +288,9 @@ export const useKGStore = create<KGStore>((set, get) => ({
         try {
             console.log('开始为节点添加索引');
 
-            const response = await fetch(`${API_BASE_URL}/data/graph/index-nodes`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    kgdb_name: 'neo4j'
-                }),
+            const data = await GraphAPI.indexNodes({
+                kgdb_name: 'neo4j'
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `请求失败：${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
             console.log('添加索引结果:', data);
 
             set({ indexing: false });
