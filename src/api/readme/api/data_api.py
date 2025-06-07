@@ -39,7 +39,7 @@ async def delete_database(db_id: str):
 @data.post("/query-test")
 async def query_test(query: str = Body(...), meta: dict = Body(...)):
     """查询测试"""
-    result = data_service.query_test(query, meta)
+    result = await data_service.query_test(query, meta)
     if result.get("status") == "failed":
         raise HTTPException(status_code=400, detail=result.get("message"))
     return result

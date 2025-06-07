@@ -49,6 +49,7 @@ export type ChatState = {
   availableModels: Record<string, string[]>;
   modelProviders: string[];
   isInitialized: boolean;
+  titleGenerating: boolean;
   setApiUrl: (url: string) => void;
   setCurrentConversationId: (id: string) => void;
   setMeta: (meta: Partial<ChatMeta>) => void;
@@ -84,6 +85,7 @@ const useStore = create<ChatState>()(
       currentModel: '',
       availableModels: {},
       modelProviders: ['deepseek'],
+      titleGenerating: false,
 
       setApiUrl: (url) => set({ apiUrl: url }),
       setCurrentConversationId: (id: string) => set({ currentConversationId: id }),
@@ -103,10 +105,9 @@ const useStore = create<ChatState>()(
         const historyKeys = Object.keys(state.conversationHistory);
 
         if (historyKeys.length === 0) {
-          // 没有历史会话，创建新会话
-          console.log('没有历史会话，创建新会话');
-          const newId = state.createConversation('');
-          set({ currentConversationId: newId, isInitialized: true });
+          // 没有历史会话，允许空会话列表
+          console.log('没有历史会话，允许空会话列表');
+          set({ currentConversationId: '', isInitialized: true });
         } else {
           // 有历史会话，选择最新的一个
           const sortedIds = historyKeys.sort((a, b) => {
@@ -160,7 +161,9 @@ const useStore = create<ChatState>()(
       },
 
       createConversation: (title) => {
-        const conversationId = Date.now().toString();
+        const timestamp = Date.now();
+        const randomNum = Math.floor(Math.random() * 1000);
+        const conversationId = `${timestamp}${randomNum}`;
         const welcomeMsg: Message = {
           id: (Date.now() + 1).toString(), // 确保ID不重复
           role: 'assistant',
@@ -203,45 +206,88 @@ const useStore = create<ChatState>()(
       },
 
       deleteConversation: (conversationId) => {
+        const state = get();
+        const newConversationHistory = Object.fromEntries(
+          Object.entries(state.conversationHistory).filter(([id]) => id !== conversationId)
+        );
+        const newConversationMessageHistory = Object.fromEntries(
+          Object.entries(state.conversationMessageHistory).filter(([id]) => id !== conversationId)
+        );
+
+        // 如果删除的是当前选中的会话，需要更新当前会话ID
+        let newCurrentConversationId = state.currentConversationId;
+        if (state.currentConversationId === conversationId) {
+          const remainingIds = Object.keys(newConversationHistory);
+          if (remainingIds.length > 0) {
+            // 选择最新的会话
+            const sortedIds = remainingIds.sort((a, b) => {
+              const timeA = parseInt(newConversationHistory[a].time);
+              const timeB = parseInt(newConversationHistory[b].time);
+              return timeB - timeA; // 降序排列，最新的在前
+            });
+            newCurrentConversationId = sortedIds[0];
+          } else {
+            // 没有剩余会话，设置为空
+            newCurrentConversationId = '';
+          }
+        }
+
         set({
-          conversationHistory: Object.fromEntries(
-            Object.entries(get().conversationHistory).filter(([id]) => id !== conversationId)
-          ),
-          conversationMessageHistory: Object.fromEntries(
-            Object.entries(get().conversationMessageHistory).filter(([id]) => id !== conversationId)
-          )
+          conversationHistory: newConversationHistory,
+          conversationMessageHistory: newConversationMessageHistory,
+          currentConversationId: newCurrentConversationId
         });
         return true;
       },
 
-      appendMessage: (conversationId, msg) =>
+      appendMessage: (conversationId, msg) => {
+        const currentHistory = get().conversationMessageHistory[conversationId];
+        if (!currentHistory) {
+          console.warn(`会话 ${conversationId} 不存在，无法添加消息`);
+          return;
+        }
         set({
           conversationMessageHistory: {
             ...get().conversationMessageHistory,
             [conversationId]: {
-              messages: [...get().conversationMessageHistory[conversationId].messages, msg]
+              messages: [...currentHistory.messages, msg]
             }
           }
-        }),
+        });
+      },
 
-      updateMessage: (conversationId, id, update) =>
+      updateMessage: (conversationId, id, update) => {
+        const currentHistory = get().conversationMessageHistory[conversationId];
+        if (!currentHistory) {
+          console.warn(`会话 ${conversationId} 不存在，无法更新消息`);
+          return;
+        }
         set({
           conversationMessageHistory: {
             ...get().conversationMessageHistory,
             [conversationId]: {
-              ...get().conversationMessageHistory[conversationId],
-              messages: get().conversationMessageHistory[conversationId].messages.map(msg =>
+              ...currentHistory,
+              messages: currentHistory.messages.map(msg =>
                 msg.id === id
                   ? (typeof update === 'function' ? update(msg) : { ...msg, content: update })
                   : msg
               )
             }
           }
-        }),
+        });
+      },
 
       streamRequest: async (conversationId: string, input: string) => {
-        const { appendMessage, updateMessage, meta, conversationMessageHistory } = get();
-        const conversation = get().conversationHistory[conversationId];
+        const { appendMessage, updateMessage, meta, conversationMessageHistory, resetConversationId, createConversation } = get();
+
+        // 如果会话ID为空或不存在，自动创建新会话
+        let actualConversationId = conversationId;
+        if (!conversationId || !get().conversationHistory[conversationId]) {
+          console.log('会话不存在，自动创建新会话');
+          actualConversationId = createConversation('');
+        }
+
+        const conversation = get().conversationHistory[actualConversationId];
 
         const userMsg: Message = {
           id: Date.now().toString(),
@@ -258,8 +304,12 @@ const useStore = create<ChatState>()(
         };
 
         // 添加用户消息和初始机器人消息
-        appendMessage(conversationId, userMsg);
-        appendMessage(conversationId, botMsg);
+        appendMessage(actualConversationId, userMsg);
+        appendMessage(actualConversationId, botMsg);
+
+        // 用于跟踪实际的服务器thread_id
+        let serverThreadId: string | null = null;
+        let isNewSession = false;
 
         try {
           // 构建meta参数，从空对象开始
@@ -284,10 +334,13 @@ const useStore = create<ChatState>()(
             cleanMeta.history_round = meta.history_round;
           }
 
+          // 检查是否是新会话（标题为空）
+          isNewSession = !conversation?.title || conversation.title === '';
+
           const requestBody: ChatRequest = {
             query: input,
             meta: cleanMeta,
-            thread_id: conversationId
+            thread_id: isNewSession ? undefined : actualConversationId  // 新会话不传thread_id
           };
 
           // 构建正确格式的history数组
@@ -295,7 +348,7 @@ const useStore = create<ChatState>()(
             requestBody.history = conversation.history;
           } else {
             // 如果没有服务器返回的history，使用本地消息历史
-            const localHistory = conversationMessageHistory[conversationId]?.messages || [];
+            const localHistory = conversationMessageHistory[actualConversationId]?.messages || [];
             const formattedHistory = localHistory
               .filter(msg => msg.role === 'user' || msg.role === 'assistant')
               .slice(-10) // 只取最近10条消息
@@ -319,20 +372,35 @@ const useStore = create<ChatState>()(
             (data: ChatStreamChunk) => {
               console.log('接收到数据:', data);
 
+              // 处理服务器返回的thread_id
+              if (data.thread_id && !serverThreadId) {
+                serverThreadId = data.thread_id;
+
+                // 如果是新会话且服务器返回了新的thread_id，需要更新会话ID
+                if (isNewSession && serverThreadId !== actualConversationId) {
+                  console.log(`新会话ID映射: ${actualConversationId} -> ${serverThreadId}`);
+                  resetConversationId(actualConversationId, serverThreadId);
+                  actualConversationId = serverThreadId; // 更新本地conversationId变量
+
+                  // 更新当前选中的会话ID
+                  set({ currentConversationId: serverThreadId });
+                }
+              }
+
               // 保存服务器返回的模型名称
               if (data.meta && data.meta.server_model_name) {
                 set({ currentModel: data.meta.server_model_name });
               }
 
               if (data.status === 'searching') {
-                updateMessage(conversationId, botMsg.id, (msg) => ({
+                updateMessage(actualConversationId, botMsg.id, (msg) => ({
                   ...msg,
                   content: '🔍 正在搜索知识库...',
                   loading: true,
                   streaming: true
                 }));
               } else if (data.status === 'generating') {
-                updateMessage(conversationId, botMsg.id, (msg) => ({
+                updateMessage(actualConversationId, botMsg.id, (msg) => ({
                   ...msg,
                   content: '💭 正在生成回答...',
                   loading: true,
@@ -341,7 +409,7 @@ const useStore = create<ChatState>()(
                 }));
               } else if (data.status === 'reasoning') {
                 if (data.reasoning_content) {
-                  updateMessage(conversationId, botMsg.id, (msg) => ({
+                  updateMessage(actualConversationId, botMsg.id, (msg) => ({
                     ...msg,
                     reasoning_content: data.reasoning_content,
                     content: '🤔 正在推理...',
@@ -350,14 +418,42 @@ const useStore = create<ChatState>()(
                   }));
                 }
               } else if (data.status === 'loading') {
-                if (data.response) {
-                  finalContent += data.response;
-                  updateMessage(conversationId, botMsg.id, (msg) => ({
+                // 处理流式内容更新，支持 content 和 response 字段
+                const deltaContent = data.content || data.response;
+                if (deltaContent) {
+                  finalContent += deltaContent;
+                  updateMessage(actualConversationId, botMsg.id, (msg) => ({
                     ...msg,
                     content: finalContent,
                     loading: false,
                     streaming: true
                   }));
+                }
+              } else if (data.status === 'title_generating') {
+                // 标题生成中状态
+                console.log('正在生成会话标题...');
+                set({ titleGenerating: true });
+              } else if (data.status === 'title_generated') {
+                // 标题生成完成，更新会话标题
+                if (data.title) {
+                  console.log('会话标题生成完成:', data.title);
+
+                  // 使用当前的actualConversationId（可能已经被更新为serverThreadId）
+                  const currentConversation = get().conversationHistory[actualConversationId];
+                  if (currentConversation) {
+                    set({
+                      conversationHistory: {
+                        ...get().conversationHistory,
+                        [actualConversationId]: {
+                          ...currentConversation,
+                          title: data.title
+                        }
+                      },
+                      titleGenerating: false
+                    });
+                  } else {
+                    console.warn('无法找到会话记录，actualConversationId:', actualConversationId);
+                  }
                 }
               } else if (data.status === 'finished') {
                 // 保存对话历史
@@ -365,8 +461,8 @@ const useStore = create<ChatState>()(
                   set({
                     conversationHistory: {
                       ...get().conversationHistory,
-                      [conversationId]: {
-                        ...conversation,
+                      [actualConversationId]: {
+                        ...get().conversationHistory[actualConversationId],
                         history: data.history
                       }
                     }
@@ -378,7 +474,7 @@ const useStore = create<ChatState>()(
                   finalRefs = data.refs;
                 }
 
-                updateMessage(conversationId, botMsg.id, (msg) => ({
+                updateMessage(actualConversationId, botMsg.id, (msg) => ({
                   ...msg,
                   content: finalContent || msg.content,
                   refs: finalRefs,
@@ -386,7 +482,7 @@ const useStore = create<ChatState>()(
                   loading: false
                 }));
               } else if (data.status === 'error') {
-                updateMessage(conversationId, botMsg.id, (msg) => ({
+                updateMessage(actualConversationId, botMsg.id, (msg) => ({
                   ...msg,
                   content: `❌ 错误: ${data.message || '未知错误'}`,
                   streaming: false,
@@ -396,7 +492,7 @@ const useStore = create<ChatState>()(
             },
             (error: Error) => {
               console.error('聊天请求失败:', error);
-              updateMessage(conversationId, botMsg.id, (msg) => ({
+              updateMessage(actualConversationId, botMsg.id, (msg) => ({
                 ...msg,
                 content: '⚠️ 连接服务器失败，请检查服务器是否正常运行',
                 streaming: false,
@@ -410,7 +506,7 @@ const useStore = create<ChatState>()(
 
         } catch (error) {
           console.error('聊天请求失败:', error);
-          updateMessage(conversationId, botMsg.id, (msg) => ({
+          updateMessage(actualConversationId, botMsg.id, (msg) => ({
             ...msg,
             content: '⚠️ 连接服务器失败，请检查服务器是否正常运行',
             streaming: false,

@@ -33,12 +33,17 @@ async def chat_post(
         history: 对话历史记录列表
         thread_id: 对话线程ID
     Returns:
-        StreamingResponse: 返回一个流式响应
+        StreamingResponse: 返回一个SSE流式响应
     """
-    # 使用ChatService处理聊天请求
+    # 使用ChatService处理聊天请求，返回SSE格式的流式响应
     return StreamingResponse(
         chat_service.process_chat_stream(query, meta, history, thread_id),
-        media_type='application/json'
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'  # 禁用nginx缓冲
+        }
     )
 
 @chat.post("/call")

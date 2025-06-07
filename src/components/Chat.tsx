@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import type { BubbleProps } from '@ant-design/x';
 import { XProvider, Bubble, Sender } from '@ant-design/x';
-import { Avatar, Typography, message, Switch, Select, Space, Divider, Tag, Dropdown, Button } from 'antd';
-import { UpOutlined, DownOutlined, DeleteOutlined, DatabaseOutlined, PartitionOutlined, CaretDownOutlined } from '@ant-design/icons';
+import { Avatar, Typography, message, Select, Tag, Dropdown, Button } from 'antd';
+import { DeleteOutlined, DatabaseOutlined, PartitionOutlined, CaretDownOutlined } from '@ant-design/icons';
 import { useChatStore, Message } from '../stores/chatStore';
 import { useKnowledgeStore } from '../stores/knowledgeStore';
 import MarkdownRenderer from './Markdown';
@@ -24,14 +24,12 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
   const conversationsRef = useRef<any>(null);
   const senderRef = useRef<any>(null);
   const containerRef = useRef<any>(null);
-  const bottomRef = useRef<any>(null);
 
   const {
     currentConversationId,
     setCurrentConversationId,
     streamRequest,
     createConversation,
-    conversationHistory,
     conversationMessageHistory,
     meta,
     setMeta,
@@ -40,7 +38,8 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
     modelProviders,
     fetchModels,
     isInitialized,
-    initializeApp
+    initializeApp,
+    titleGenerating
   } = useChatStore();
 
   const { databases, fetchDatabases } = useKnowledgeStore();
@@ -163,10 +162,7 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
     }
   };
 
-  // 处理模型选择
-  const handleModelChange = (modelName: string) => {
-    setMeta({ model_name: modelName });
-  };
+
 
   // 创建模型选择菜单项
   const getModelMenuItems = () => {
@@ -215,16 +211,23 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
 
   // 使用 useMemo 缓存消息渲染函数
   const messageRenderer = useMemo(() => {
-    return (content: string, msg?: Message) => (
-      <div>
-        {/* 召回信息显示 */}
-        {msg?.retrieved_docs && msg.retrieved_docs.length > 0 && (
-          <RetrievedDocs documents={msg.retrieved_docs} />
-        )}
-        {/* 消息内容 */}
-        <MemoizedMarkdownRenderer content={content} />
-      </div>
-    );
+    return (content: string, msg?: Message) => {
+      // 添加调试信息
+      if (msg?.retrieved_docs && msg.retrieved_docs.length > 0) {
+        console.log('渲染召回文档:', msg.retrieved_docs);
+      }
+
+      return (
+        <div>
+          {/* 召回信息显示 */}
+          {msg?.retrieved_docs && msg.retrieved_docs.length > 0 && (
+            <RetrievedDocs documents={msg.retrieved_docs} />
+          )}
+          {/* 消息内容 */}
+          <MemoizedMarkdownRenderer content={content} />
+        </div>
+      );
+    };
   }, []);
 
   // 优化 commonBubble，添加 Markdown 到依赖数组
@@ -299,7 +302,7 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
           </div>
 
           {/* 功能状态指示 */}
-          {(meta.use_graph || meta.db_id) && (
+          {(meta.use_graph || meta.db_id || titleGenerating) && (
             <div className="mb-4 flex justify-center">
               <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
                 {meta.use_graph && (
@@ -314,6 +317,15 @@ const Chat: React.FC<{ siderWidth: number }> = ({ siderWidth = 300 }) => {
                     <DatabaseOutlined />
                     {databases.find(db => db.db_id === meta.db_id)?.name || '知识库'}
                   </span>
+                )}
+                {titleGenerating && (
+                  <>
+                    {(meta.use_graph || meta.db_id) && <span>•</span>}
+                    <span className="flex items-center gap-1">
+                      <span className="animate-spin">⚙️</span>
+                      正在生成标题...
+                    </span>
+                  </>
                 )}
               </div>
             </div>

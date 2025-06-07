@@ -40,15 +40,17 @@ export interface RetrievedDocument {
 }
 
 export interface ChatStreamChunk {
-  response?: string;
+  response?: string;  // 兼容旧版本
+  content?: string;   // 后端实际使用的字段
   reasoning_content?: string;
-  status: 'searching' | 'generating' | 'reasoning' | 'loading' | 'finished' | 'error';
+  status: 'searching' | 'generating' | 'reasoning' | 'loading' | 'finished' | 'error' | 'title_generating' | 'title_generated';
   message?: string;
   meta?: ChatMeta;
   thread_id?: string;
   history?: ChatMessage[];
   refs?: any[];
-  retrieved_docs?: RetrievedDocument[];  // 新增召回文档字段
+  retrieved_docs?: RetrievedDocument[];  // 召回文档字段
+  title?: string;  // 新增：会话标题字段
 }
 
 export interface ChatCallRequest {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Input, Button, theme, message, Modal, Skeleton } from 'antd';
+import { Input, Button, theme, message, Modal, Skeleton, Empty } from 'antd';
 import { SearchOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useChatStore } from '@/stores/chatStore';
 import { useEffect, useState, useCallback, memo, useMemo } from 'react';
@@ -99,7 +99,9 @@ export default function ChatSideContainer() {
         onClick={() => setCurrentConversationId(item.id)}
       >
         <div className="flex justify-between items-center ">
-          <span className='overflow-hidden text-ellipsis whitespace-nowrap'>{(item.title===''||item.title==null)?'新对话':item.title}</span>
+          <span className='overflow-hidden text-ellipsis whitespace-nowrap' title={item.title || '新对话'}>
+            {(item.title === '' || item.title == null) ? '新对话' : item.title}
+          </span>
           <div className='flex items-center gap-2'>
             <Button
               type="text"
@@ -150,17 +152,31 @@ export default function ChatSideContainer() {
       </div>
       <div  className="p-2 z-0 h-[calc(100%-100px)] w-full">
       <Skeleton loading={loading} active>
-        <List
-          className='z-0'
-          height={listHeight}
-          itemCount={items.length}
-          itemSize={50}
-          width="100%"
-          itemData={items} // 5. 添加itemData属性
-          overscanCount={5} // 6. 添加overscanCount提升滚动性能
-        >
-          {MemoizedRow}
-        </List>
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <div className="text-center">
+                  <p className="text-gray-500 mb-2">暂无会话记录</p>
+                  <p className="text-gray-400 text-sm">点击下方按钮开始新的对话</p>
+                </div>
+              }
+            />
+          </div>
+        ) : (
+          <List
+            className='z-0'
+            height={listHeight}
+            itemCount={items.length}
+            itemSize={50}
+            width="100%"
+            itemData={items} // 5. 添加itemData属性
+            overscanCount={5} // 6. 添加overscanCount提升滚动性能
+          >
+            {MemoizedRow}
+          </List>
+        )}
         </Skeleton>
       </div>
       <div className="absolute bottom-0 left-0 border-t p-4 bg-white  w-[calc(100%-10px)] h-[90px] z-10">

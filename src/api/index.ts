@@ -111,11 +111,23 @@ export const createStreamRequest = async (
       for (const line of lines) {
         if (!line.trim()) continue;
 
-        try {
-          const data = JSON.parse(line);
-          onChunk(data);
-        } catch (error) {
-          console.error('解析流式数据失败:', error, 'Line:', line);
+        // 处理SSE格式：data: {json}
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.substring(6); // 移除 "data: " 前缀
+          try {
+            const data = JSON.parse(jsonStr);
+            onChunk(data);
+          } catch (error) {
+            console.error('解析SSE数据失败:', error, 'Line:', line);
+          }
+        } else {
+          // 兼容处理：如果不是SSE格式，尝试直接解析JSON
+          try {
+            const data = JSON.parse(line);
+            onChunk(data);
+          } catch (error) {
+            console.error('解析流式数据失败:', error, 'Line:', line);
+          }
         }
       }
     }
